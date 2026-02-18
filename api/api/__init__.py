@@ -30,7 +30,7 @@ def create_app():
     def hello():
         return jsonify({"message": "FastF1 Flask API is running successfully!"}), 200
 
-    # Import and register blueprints
+    # Import and register blueprints with /api prefix
     from .blueprints import schedule, telemetry
 
     app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
