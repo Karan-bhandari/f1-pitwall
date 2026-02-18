@@ -8,5 +8,4 @@ dependencies = [
     "fastf1>=3.5.3",
     "flask>=3.1.0",
     "flask-cors>=5.0.1",
-    "ipykernel>=6.29.5",
 ]

@@ -26,11 +26,11 @@ def create_app():
     fastf1.Cache.enable_cache(cache_path)
 
     # A simple route for health check
-    @app.route("/")
+    @app.route("/api")
     def hello():
         return jsonify({"message": "FastF1 Flask API is running successfully!"}), 200
 
-    # Import and register blueprints with /api prefix
+    # Import and register blueprints
     from .blueprints import schedule, telemetry
 
     app.register_blueprint(schedule.schedule_bp, url_prefix="/api")

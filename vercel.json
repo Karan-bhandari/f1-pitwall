@@ -17,6 +17,10 @@
       "dest": "backend/index.py"
     },
     {
+      "src": "/api",
+      "dest": "backend/index.py"
+    },
+    {
       "handle": "filesystem"
     },
     {

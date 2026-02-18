@@ -3,7 +3,7 @@ import fastf1
 import pandas as pd
 from ..utils import validate_year, error_response
 
-schedule_bp = Blueprint("schedule", __name__, url_prefix="/")
+schedule_bp = Blueprint("schedule", __name__)
 
 
 @schedule_bp.route("/events", methods=["GET"])

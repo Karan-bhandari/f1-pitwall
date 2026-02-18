@@ -5,7 +5,7 @@ import numpy as np
 from datetime import datetime
 from ..utils import validate_year, error_response, format_timedelta
 
-telemetry_bp = Blueprint("telemetry", __name__, url_prefix="/")
+telemetry_bp = Blueprint("telemetry", __name__)
 
 
 def _format_lap_entry(lap, driver_number=None):
