@@ -20,6 +20,8 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:5005',
         changeOrigin: true,
+        // Strip the /api prefix before sending to the local backend
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
   }

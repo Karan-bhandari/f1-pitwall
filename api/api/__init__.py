@@ -25,15 +25,16 @@ def create_app():
     os.makedirs(cache_path, exist_ok=True)
     fastf1.Cache.enable_cache(cache_path)
 
-    # A simple route for health check
-    @app.route("/api")
+    # Root route for the Flask app (will be /api in production)
+    @app.route("/")
     def hello():
         return jsonify({"message": "FastF1 Flask API is running successfully!"}), 200
 
-    # Import and register blueprints with /api prefix
+    # Import and register blueprints
+    # No prefix here; the /api prefix is handled by Vercel and the Vite proxy
     from .blueprints import schedule, telemetry
 
-    app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
-    app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
+    app.register_blueprint(schedule.schedule_bp)
+    app.register_blueprint(telemetry.telemetry_bp)
 
     return app
