@@ -1,0 +1,10 @@
+# Only exclude files tracked by git that shouldn't be in the Lambda bundle
+src/
+public/
+index.html
+vite.config.js
+package.json
+package-lock.json
+jsconfig.json
+LICENSE
+README.md
