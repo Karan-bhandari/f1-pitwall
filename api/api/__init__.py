@@ -7,7 +7,9 @@ import os
 def create_app():
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__, instance_relative_config=True)
-    CORS(app)
+    
+    # Configure CORS to allow all origins
+    CORS(app, resources={r"/*": {"origins": "*"}})
 
     # Ensure the instance folder exists
     try:
@@ -25,16 +27,19 @@ def create_app():
     os.makedirs(cache_path, exist_ok=True)
     fastf1.Cache.enable_cache(cache_path)
 
-    # Root route for the Flask app (will be /api in production)
+    # Health check route
+    # We add BOTH / and /api to handle different routing scenarios
     @app.route("/")
+    @app.route("/api")
     def hello():
         return jsonify({"message": "FastF1 Flask API is running successfully!"}), 200
 
     # Import and register blueprints
-    # No prefix here; the /api prefix is handled by Vercel and the Vite proxy
     from .blueprints import schedule, telemetry
 
-    app.register_blueprint(schedule.schedule_bp)
-    app.register_blueprint(telemetry.telemetry_bp)
+    # Register blueprints WITH the /api prefix
+    # This is crucial because Vercel rewrites send the FULL path to the function
+    app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
+    app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
 
     return app

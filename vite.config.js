@@ -20,8 +20,8 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:5005',
         changeOrigin: true,
-        // Strip the /api prefix before sending to the local backend
-        rewrite: (path) => path.replace(/^\/api/, '')
+        // Removed the rewrite to ensure the /api prefix is passed to the backend,
+        // matching the production behavior on Vercel.
       }
     }
   }
