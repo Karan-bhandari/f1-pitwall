@@ -1,6 +1,6 @@
 import sys
 import os
-from api import create_app
+from f1_backend import create_app
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

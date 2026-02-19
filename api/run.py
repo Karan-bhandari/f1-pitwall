@@ -1,4 +1,4 @@
-from api import create_app
+from f1_backend import create_app
 
 app = create_app()
 
