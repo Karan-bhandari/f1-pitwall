@@ -31,10 +31,10 @@ venv/
 ENV/
 
 # Project Specific ignores
-backend/.python-version
-backend/uv.lock
-backend/*.ipynb
-backend/instance/
+api/.python-version
+api/uv.lock
+api/*.ipynb
+api/instance/
 frontend/.vscode/
 
 # Agent & Skill Development
