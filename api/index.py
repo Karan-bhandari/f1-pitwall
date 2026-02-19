@@ -1,4 +1,8 @@
+import sys
+import os
 from api import create_app
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 app = create_app()
 
