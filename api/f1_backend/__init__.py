@@ -9,10 +9,11 @@ import sys
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 def create_app():
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__, instance_relative_config=True)
-    
+
     # Configure CORS to allow all origins
     CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -37,15 +38,21 @@ def create_app():
     @app.route("/")
     @app.route("/api")
     def hello():
-        return jsonify({
-            "message": "FastF1 Flask API is running successfully!",
-            "fastf1_version": fastf1.__version__,
-            "environment": "vercel" if os.environ.get("VERCEL") else "local"
-        }), 200
+        return (
+            jsonify(
+                {
+                    "message": "FastF1 Flask API is running successfully!",
+                    "fastf1_version": fastf1.__version__,
+                    "environment": "vercel" if os.environ.get("VERCEL") else "local",
+                }
+            ),
+            200,
+        )
 
     # Import and register blueprints
     try:
         from .blueprints import schedule, telemetry
+
         app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
         app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
         logger.info("Blueprints registered successfully")
