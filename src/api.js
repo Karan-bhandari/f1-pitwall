@@ -2,7 +2,7 @@ import { db } from "./database";
 
 const CACHE_DURATION_HOURS = 24; // Default cache duration for current data
 const ETERNAL_CACHE_HOURS = 99999; // A very long duration for static, historical data
-const CACHE_VERSION = 1; // Increment to invalidate all client-side caches
+const CACHE_VERSION = 6; // Increment to invalidate all client-side caches
 
 /**
  * Fetches data from a URL, with client-side caching in IndexedDB.
@@ -133,6 +133,19 @@ export async function getLapTelemetry(
 export async function getRaceSummary(year, eventKey, sessionName) {
   if (!year || !eventKey || !sessionName) return null;
   const url = `${API_BASE_URL}/race-summary?year=${year}&event_key=${eventKey}&session_name=${sessionName}`;
+  const cacheHours =
+    year < new Date().getFullYear()
+      ? ETERNAL_CACHE_HOURS
+      : CACHE_DURATION_HOURS;
+  return await fetchAndCache(url, cacheHours);
+}
+
+/**
+ * Gets the weekend summary (Recap) for all sessions.
+ */
+export async function getWeekendSummary(year, eventKey) {
+  if (!year || !eventKey) return null;
+  const url = `${API_BASE_URL}/weekend-summary?year=${year}&event_key=${eventKey}`;
   const cacheHours =
     year < new Date().getFullYear()
       ? ETERNAL_CACHE_HOURS

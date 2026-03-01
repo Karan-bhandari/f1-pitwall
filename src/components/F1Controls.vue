@@ -84,7 +84,10 @@ defineEmits([
     </select>
   </div>
 
-  <div v-if="selectedSessionName" class="view-button-container">
+  <div
+    v-if="selectedSessionName && selectedSessionName !== 'Weekend Recap'"
+    class="view-button-container"
+  >
     <button
       class="view-btn"
       :class="{ selected: viewMode === 'summary' }"

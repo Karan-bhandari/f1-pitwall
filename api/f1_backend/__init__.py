@@ -51,10 +51,11 @@ def create_app():
 
     # Import and register blueprints
     try:
-        from .blueprints import schedule, telemetry
+        from .blueprints import schedule, telemetry, recap
 
         app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
         app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
+        app.register_blueprint(recap.recap_bp, url_prefix="/api")
         logger.info("Blueprints registered successfully")
     except Exception as e:
         logger.error(f"Failed to register blueprints: {str(e)}")

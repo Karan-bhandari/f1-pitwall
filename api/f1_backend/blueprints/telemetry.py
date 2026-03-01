@@ -542,7 +542,14 @@ def get_race_summary():
 
     try:
         session = fastf1.get_session(year, event_key, session_name)
-        session.load(telemetry=False, weather=False, messages=False)
+
+        # Check if it's any qualifying type session (Qualifying, Shootout, Qualy)
+        is_quali = any(
+            k in session_name.lower() for k in ["qualifying", "shootout", "qualy"]
+        )
+
+        # Load with messages=True for quali to get results (classification)
+        session.load(telemetry=False, weather=False, messages=is_quali)
 
         results = session.results
         laps = session.laps
@@ -550,99 +557,112 @@ def get_race_summary():
         if laps.empty:
             return jsonify({"results": [], "total_laps": 0}), 200
 
-        # Intervals mapping
-        is_actual_quali = "qualifying" in session_name.lower()
-        is_sprint_quali = "sprint" in session_name.lower()
-
+        # 1. Determine phase intervals for Qualifying restarts
         intervals = []
-        if is_actual_quali:
+        is_sprint_quali = "sprint" in session_name.lower()
+        phase_prefix = "SQ" if is_sprint_quali else "Q"
+
+        if is_quali:
             status = session.session_status
-            started = status[status["Status"] == "Started"]["Time"].tolist()
-            finished = status[status["Status"] == "Finished"]["Time"].tolist()
-            phase_prefix = "SQ" if is_sprint_quali else "Q"
+            starts = status[status["Status"] == "Started"]["Time"].tolist()
+            terminations = status[
+                (status["Status"] == "Finished") | (status["Status"] == "Aborted")
+            ]["Time"].tolist()
 
-            if len(started) >= 1 and len(finished) >= 1:
-                intervals.append((f"{phase_prefix}1", started[0], finished[0]))
+            if starts and terminations:
+                p_start = starts[0]
+                current_phase_idx = 1
+                for i in range(len(terminations)):
+                    t_time = terminations[i]
+                    is_last = i == len(terminations) - 1
+                    next_start = starts[i + 1] if i + 1 < len(starts) else None
 
-            current_idx = 1
-            for p_num in ["2", "3"]:
-                if len(finished) >= current_idx:
-                    prev_f = finished[current_idx - 1]
-                    next_s = next((s for s in started if s > prev_f), None)
-                    if next_s and len(finished) > current_idx:
+                    # If gap to next start is > 5 mins, it's a new phase
+                    if is_last or (
+                        next_start and (next_start - t_time).total_seconds() > 300
+                    ):
                         intervals.append(
-                            (f"{phase_prefix}{p_num}", next_s, finished[current_idx])
+                            (f"{phase_prefix}{current_phase_idx}", p_start, t_time)
                         )
-                        current_idx += 1
+                        current_phase_idx += 1
+                        if next_start:
+                            p_start = next_start
+            intervals = intervals[:3]
 
-        # Pre-assign phases to ALL laps using the robust interval logic
+        # 2. Pre-assign phases to ALL laps
         laps["Phase"] = "Session"
-        if is_actual_quali:
+        if is_quali:
             laps["Phase"] = "None"
-            # 1. Build map of driver to their max allowed phase index (0=Q1, 1=Q2, 2=Q3)
-            driver_max_phase_idx = {}
-            for _, driver in results.iterrows():
-                pos = int(driver["Position"]) if pd.notna(driver["Position"]) else 20
-                d_abbrev = str(driver["Abbreviation"])
-                if pos <= 10:
-                    driver_max_phase_idx[d_abbrev] = 2  # Q3
-                elif pos <= 15:
-                    driver_max_phase_idx[d_abbrev] = 1  # Q2
-                else:
-                    driver_max_phase_idx[d_abbrev] = 0  # Q1
 
-            # 2. Assign phases to laps
+            # Map driver to their max allowed phase based on classification
+            driver_max_phase_idx = {}
+            if (
+                results is not None
+                and not results.empty
+                and "Position" in results.columns
+            ):
+                for _, driver in results.iterrows():
+                    pos_val = driver.get("Position")
+                    if pd.isna(pos_val):
+                        continue
+                    pos = int(pos_val)
+                    d_abbrev = str(driver["Abbreviation"])
+                    if pos <= 10:
+                        driver_max_phase_idx[d_abbrev] = 2  # Q3/SQ3
+                    elif pos <= 15:
+                        driver_max_phase_idx[d_abbrev] = 1  # Q2/SQ2
+                    else:
+                        driver_max_phase_idx[d_abbrev] = 0  # Q1/SQ1
+
             for idx, lap in laps.iterrows():
                 st = lap["LapStartTime"]
                 if pd.isna(st):
                     continue
 
                 d_abbrev = lap["Driver"]
-                allowed_idx = driver_max_phase_idx.get(d_abbrev, 0)  # Default to Q1
+                allowed_idx = driver_max_phase_idx.get(d_abbrev, 0)
 
                 assigned_phase = "None"
-                # Check standard intervals
                 for i, (name, start, end) in enumerate(intervals):
                     if start <= st <= end:
-                        if i > allowed_idx:
-                            # Driver not allowed in this phase -> Cap to max allowed
-                            assigned_phase = intervals[allowed_idx][0]
-                        else:
-                            assigned_phase = name
+                        assigned_phase = intervals[min(i, allowed_idx)][0]
                         break
 
-                # Fallback: Late laps (e.g. in-laps after flag)
                 if assigned_phase == "None" and intervals:
-                    if allowed_idx < len(intervals):
-                        phase_name, p_start, p_end = intervals[allowed_idx]
-                        # Allow 5 mins buffer after phase end
-                        if p_end < st < p_end + pd.Timedelta(minutes=5):
-                            assigned_phase = phase_name
+                    target_idx = min(len(intervals) - 1, allowed_idx)
+                    p_name, p_start, p_end = intervals[target_idx]
+                    if p_end < st < p_end + pd.Timedelta(minutes=5):
+                        assigned_phase = p_name
 
                 laps.at[idx, "Phase"] = assigned_phase
 
+        # 3. Determine available phases (Buttons)
         unique_phases = sorted(
             [p for p in laps["Phase"].unique().tolist() if p != "None"]
         )
 
-        # Robustly determine available phases for Qualifying
-        if is_actual_quali:
-            phase_prefix = "SQ" if is_sprint_quali else "Q"
+        if is_quali:
             max_reached = 1
-            for _, driver in results.iterrows():
-                pos = int(driver["Position"]) if pd.notna(driver["Position"]) else 20
-                if pos <= 10:
-                    max_reached = 3
-                    break
-                elif pos <= 15:
-                    max_reached = max(max_reached, 2)
+            if (
+                results is not None
+                and not results.empty
+                and "Position" in results.columns
+            ):
+                for _, driver in results.iterrows():
+                    pos_val = driver.get("Position")
+                    if pd.isna(pos_val):
+                        continue
+                    pos = int(pos_val)
+                    if pos <= 10:
+                        max_reached = 3
+                        break
+                    elif pos <= 15:
+                        max_reached = max(max_reached, 2)
 
-            # Create full list up to max reached
-            available_phases = [f"{phase_prefix}{i}" for i in range(1, max_reached + 1)]
-            # Merge with any phases actually found in laps (to be safe)
-            unique_phases = sorted(list(set(available_phases + unique_phases)))
+            fallback_phases = [f"{phase_prefix}{i}" for i in range(1, max_reached + 1)]
+            unique_phases = sorted(list(set(fallback_phases + unique_phases)))
 
-        # Calculate phase-specific bests for Purple coloring
+        # 4. Calculate phase-specific bests for Purple coloring
         phase_bests = {}
         for p in unique_phases:
             p_laps = laps[(laps["Phase"] == p) & (laps["IsAccurate"] == True)]
@@ -723,11 +743,11 @@ def get_race_summary():
             abbrev = str(driver["Abbreviation"])
             driver_laps = laps[laps["Driver"] == abbrev].copy()
 
-            pos = int(driver["Position"]) if pd.notna(driver["Position"]) else 20
-            phase_prefix = "SQ" if is_sprint_quali else "Q"
+            pos_val = driver.get("Position")
+            pos = int(pos_val) if pd.notna(pos_val) else 20
 
             # STRICT FILTERING: Use classification results
-            if is_actual_quali:
+            if is_quali:
                 # Top 15 reach Q2, Top 10 reach Q3
                 if pos > 15:
                     driver_laps = driver_laps[~driver_laps["Phase"].str.contains("2|3")]
@@ -890,7 +910,7 @@ def get_race_summary():
                                 f"{phase_prefix}2" if pos <= 15 else f"{phase_prefix}1"
                             )
                         )
-                        if is_actual_quali
+                        if is_quali
                         else "Session"
                     ),
                 }

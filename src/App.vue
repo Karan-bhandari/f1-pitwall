@@ -5,6 +5,7 @@ import TelemetryChart from "./components/TelemetryChart.vue";
 import LapTimeChart from "./components/LapTimeChart.vue";
 import RaceSummary from "./components/RaceSummary.vue";
 import QualifyingSummary from "./components/QualifyingSummary.vue";
+import SessionRecap from "./components/SessionRecap.vue";
 import {
   getEvents,
   getSessions,
@@ -45,14 +46,18 @@ const isLoadingComparison = ref(false);
 const comparisonError = ref(null);
 
 // --- View State ---
-const viewMode = ref("summary"); // 'summary' or 'comparison'
+const viewMode = ref("summary"); // 'summary', 'comparison', or 'recap'
 const summaryData = shallowRef(null);
 const isLoadingSummary = ref(false);
 const summaryError = ref(null);
 
 const isQualifyingSession = computed(() => {
   const name = selectedSessionName.value?.toLowerCase() || "";
-  return name.includes("qualifying") || name.includes("practice");
+  return (
+    name.includes("qualifying") ||
+    name.includes("shootout") ||
+    name.includes("qualy")
+  );
 });
 
 // --- Telemetry State ---
@@ -107,14 +112,11 @@ const handleQuickLapSelect = async ({ driverNumber, lapNumber }) => {
 
 // --- API Fetching ---
 const fetchRaceSummary = async () => {
-  console.log(
-    "Fetching summary for:",
-    selectedSessionName.value,
-    "ViewMode:",
-    viewMode.value,
-  );
-  if (!selectedSessionName.value || viewMode.value !== "summary") {
-    console.log("Summary fetch skipped: missing session or wrong view mode");
+  if (
+    !selectedSessionName.value ||
+    selectedSessionName.value === "Weekend Recap" ||
+    viewMode.value !== "summary"
+  ) {
     return;
   }
   isLoadingSummary.value = true;
@@ -125,7 +127,6 @@ const fetchRaceSummary = async () => {
       selectedEventKey.value,
       selectedSessionName.value,
     );
-    console.log("Summary data received:", data);
     summaryData.value = data;
   } catch (e) {
     console.error("Failed to fetch race summary:", e);
@@ -161,7 +162,11 @@ const fetchSessions = async () => {
   resetState(1);
   try {
     const data = await getSessions(year.value, selectedEventKey.value);
-    sessions.value = data.sessions || [];
+    const sessionList = data.sessions || [];
+    // Add Weekend Recap as the default first option
+    sessions.value = [{ name: "Weekend Recap" }, ...sessionList];
+    selectedSessionName.value = "Weekend Recap";
+    viewMode.value = "recap";
   } catch (e) {
     console.error("Failed to fetch sessions:", e);
     sessionsError.value = "Could not load sessions.";
@@ -171,7 +176,10 @@ const fetchSessions = async () => {
 };
 
 const fetchDrivers = async () => {
-  if (!selectedSessionName.value) {
+  if (
+    !selectedSessionName.value ||
+    selectedSessionName.value === "Weekend Recap"
+  ) {
     resetState(2);
     return;
   }
@@ -193,6 +201,14 @@ const fetchDrivers = async () => {
   }
 };
 
+const fetchSessionDataSequentially = async () => {
+  // Prevent fastf1 SQLite cache lock by fetching drivers then summary
+  await fetchDrivers();
+  if (viewMode.value === "summary") {
+    await fetchRaceSummary();
+  }
+};
+
 const fetchRaceComparison = async () => {
   if (!selectedDriver1.value || !selectedDriver2.value) {
     resetState(3);
@@ -200,8 +216,6 @@ const fetchRaceComparison = async () => {
   }
   isLoadingComparison.value = true;
   comparisonError.value = null;
-  // Reset telemetry only (keep raceComparison until new data arrives if preferred,
-  // but following existing pattern of clearing it for now)
   telemetryData.value = null;
 
   try {
@@ -283,16 +297,27 @@ watch(theme, (newTheme) => {
 });
 watch(year, fetchEvents);
 watch(selectedEventKey, fetchSessions);
-watch(selectedSessionName, fetchDrivers);
+
+watch(selectedSessionName, (newName) => {
+  if (newName === "Weekend Recap") {
+    viewMode.value = "recap";
+  } else if (viewMode.value === "recap") {
+    viewMode.value = "summary";
+  }
+  fetchSessionDataSequentially();
+});
+
+watch(viewMode, (newMode) => {
+  if (newMode === "summary" && selectedSessionName.value !== "Weekend Recap") {
+    // Only fetch if we don't already have it
+    if (!summaryData.value) {
+      fetchRaceSummary();
+    }
+  }
+});
+
 watch([selectedDriver1, selectedDriver2], fetchRaceComparison);
 watch([selectedLap1, selectedLap2], fetchTelemetry);
-watch(
-  [selectedSessionName, viewMode],
-  () => {
-    fetchRaceSummary();
-  },
-  { immediate: true },
-);
 
 onMounted(() => {
   const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -336,7 +361,11 @@ onMounted(() => {
       v-model:viewMode="viewMode"
     />
 
-    <template v-if="viewMode === 'comparison'">
+    <template v-if="viewMode === 'recap'">
+      <SessionRecap :year="Number(year)" :eventKey="selectedEventKey" />
+    </template>
+
+    <template v-else-if="viewMode === 'comparison'">
       <LapTimeChart
         :raceComparison="raceComparison"
         :isLoading="isLoadingComparison"
@@ -351,7 +380,7 @@ onMounted(() => {
       />
     </template>
 
-    <template v-else-if="viewMode === 'summary'">
+    <template v-else-if="viewMode === 'summary' && summaryData">
       <QualifyingSummary
         v-if="isQualifyingSession"
         :summaryData="summaryData"

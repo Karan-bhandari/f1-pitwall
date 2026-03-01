@@ -26,3 +26,12 @@ db.version(3)
   .upgrade((trans) => {
     return trans.table("api_cache").clear();
   });
+
+// Version 4: Clear cache to ensure robust Q1/Q2/Q3 phase buttons for historical sessions
+db.version(4)
+  .stores({
+    api_cache: "&url, timestamp",
+  })
+  .upgrade((trans) => {
+    return trans.table("api_cache").clear();
+  });
