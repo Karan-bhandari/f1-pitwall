@@ -35,3 +35,12 @@ db.version(4)
   .upgrade((trans) => {
     return trans.table("api_cache").clear();
   });
+
+// Version 5: Clear cache to ensure correct Q1/Q2/Q3 lap assignments using fastf1 built-in split
+db.version(5)
+  .stores({
+    api_cache: "&url, timestamp",
+  })
+  .upgrade((trans) => {
+    return trans.table("api_cache").clear();
+  });
