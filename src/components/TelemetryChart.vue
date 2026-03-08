@@ -39,6 +39,18 @@ const createChart = (
       legend: {
         display: canvasId === "speed-chart", // Only show legend on top chart
         weight: 3000, // Push legend to the very top, above the title
+        onClick: (e, legendItem, legend) => {
+          const index = legendItem.datasetIndex;
+          // Synchronize visibility across all charts
+          chartInstances.forEach((chart) => {
+            if (chart) {
+              const meta = chart.getDatasetMeta(index);
+              // Toggle visibility
+              meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
+              chart.update();
+            }
+          });
+        }
       },
     },
   ];

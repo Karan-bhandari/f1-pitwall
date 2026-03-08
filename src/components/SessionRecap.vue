@@ -390,16 +390,26 @@ td {
   font-size: 0.95rem;
 }
 
+.pos-cell {
+  width: 60px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--muted-text-color);
+  font-family: "JetBrains Mono", monospace;
+}
+
 .driver-cell {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 220px;
 }
 
 .team-stripe {
-  width: 4px;
-  height: 24px;
-  border-radius: 2px;
+  width: 6px;
+  height: 28px;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 .abbr {
   font-weight: 800;
