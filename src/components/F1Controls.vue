@@ -312,4 +312,24 @@ select:disabled {
   border-radius: 8px;
   margin: 1rem 0;
 }
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+  .driver-controls {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .view-button-container {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.5rem 0;
+  }
+
+  .view-btn {
+    width: 100%;
+    padding: 0.8rem 1rem;
+  }
+}
 </style>

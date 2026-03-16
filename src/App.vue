@@ -513,4 +513,36 @@ h3 {
   padding: 3rem;
   color: var(--muted-text-color);
 }
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+  body {
+    padding: 0.5rem;
+  }
+
+  #app-container {
+    padding: 1.25rem 1rem;
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .theme-toggle {
+    top: 1rem;
+    right: 1rem;
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+
+  h2 {
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+}
 </style>

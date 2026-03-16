@@ -178,6 +178,11 @@ const calculatePosition = (startLap, lapCount = 1) => {
   border: 1px solid var(--border-color);
 }
 
+.summary-content {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .summary-header {
   display: flex;
   background: var(--item-bg-color);
@@ -188,6 +193,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   border-bottom: 1px solid var(--border-color);
   text-transform: uppercase;
   letter-spacing: 1px;
+  min-width: 800px;
 }
 
 .track-status-row {
@@ -196,6 +202,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   padding: 0.5rem 1.5rem;
   background: var(--card-bg-color);
   border-bottom: 1px solid var(--border-color);
+  min-width: 800px;
 }
 
 .track-status-row .col-driver {
@@ -257,6 +264,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   position: relative;
   background: transparent;
   z-index: 1;
+  min-width: 800px;
 }
 
 .driver-row:last-child {
@@ -298,6 +306,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   font-weight: 700;
   font-size: 1rem;
   color: var(--text-color);
+  white-space: nowrap;
 }
 
 .team-name {
@@ -306,6 +315,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .col-stints {
@@ -397,5 +407,27 @@ const calculatePosition = (startLap, lapCount = 1) => {
 .error-state p {
   color: var(--primary-color);
   font-weight: bold;
+}
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+  .driver-header {
+    width: 90px;
+    padding-right: 0.5rem;
+  }
+  .pos-number {
+    font-size: 1.1rem;
+    min-width: 20px;
+  }
+  .driver-abbrev {
+    font-size: 1.1rem;
+  }
+  .driver-team {
+    font-size: 0.6rem;
+    white-space: normal;
+  }
+  .stint-segment {
+    padding: 0 0.5rem;
+  }
 }
 </style>

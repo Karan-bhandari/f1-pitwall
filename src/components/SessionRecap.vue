@@ -75,6 +75,17 @@ const isPracticeType = (name) => {
   const n = (name || "").toLowerCase();
   return n.includes("practice") || n.includes("fp");
 };
+
+const getTyreColor = (compound) => {
+  const colors = {
+    SOFT: "#ff3333",
+    MEDIUM: "#ffff00",
+    HARD: "#ffffff",
+    INTERMEDIATE: "#00ff00",
+    WET: "#0000ff",
+  };
+  return colors[compound.toUpperCase()] || "#777777";
+};
 </script>
 
 <template>
@@ -247,6 +258,58 @@ const isPracticeType = (name) => {
           </div>
 
           <div
+            v-if="activeSession.insights.speed_king"
+            class="insight-card speed-card"
+          >
+            <h4>Speed King</h4>
+            <div class="info-row">
+              <span class="driver">{{
+                activeSession.insights.speed_king.abbreviation
+              }}</span>
+              <span class="value-highlight"
+                >{{ activeSession.insights.speed_king.value.toFixed(1) }} km/h</span
+              >
+            </div>
+          </div>
+
+          <div
+            v-if="activeSession.insights.sector_kings"
+            class="insight-card sector-kings-card"
+          >
+            <h4>Sector Kings</h4>
+            <div class="sector-grid">
+              <template v-for="(king, sector) in activeSession.insights.sector_kings" :key="sector">
+                <span class="sector-label">{{ sector.toUpperCase() }}</span>
+                <span class="sector-driver">{{ king.abbreviation }}</span>
+                <span class="sector-time">{{ king.time }}</span>
+              </template>
+            </div>
+          </div>
+
+          <div
+            v-if="activeSession.insights.winning_strategy"
+            class="insight-card strategy-card"
+          >
+            <h4>Winning Strategy</h4>
+            <div class="strategy-timeline">
+              <div
+                v-for="(stint, idx) in activeSession.insights.winning_strategy"
+                :key="idx"
+                class="strategy-stint"
+                :style="{
+                  backgroundColor: getTyreColor(stint.compound),
+                  flex: stint.laps,
+                }"
+                :title="`${stint.compound}: ${stint.laps} Laps`"
+              >
+                <span class="lap-count" v-if="stint.laps > 5">{{
+                  stint.laps
+                }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div
             v-if="activeSession.insights.incidents?.length > 0"
             class="insight-card incident-card"
           >
@@ -368,6 +431,12 @@ button.active {
   padding: 0;
 }
 
+.table-container {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -421,6 +490,11 @@ td {
 .time-cell {
   font-family: "JetBrains Mono", monospace;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-cell {
+  white-space: nowrap;
 }
 
 .insights-panel {
@@ -471,6 +545,63 @@ td {
   align-items: center;
   gap: 12px;
 }
+
+.sector-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px 0;
+}
+
+.sector-label {
+  font-weight: 800;
+  opacity: 0.6;
+  font-size: 0.8rem;
+  min-width: 30px;
+  padding-right: 12px;
+}
+
+.sector-driver {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.sector-time {
+  font-family: "JetBrains Mono", monospace;
+  color: var(--primary-color);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: right;
+  padding-left: 12px;
+}
+
+.strategy-timeline {
+  display: flex;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+}
+.strategy-stint {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+}
+.strategy-stint:last-child {
+  border-right: none;
+}
+.strategy-stint .lap-count {
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: #000;
+}
+.strategy-stint[style*="#0000ff"] .lap-count {
+  color: #fff;
+}
+
 .pos-1 {
   color: #ffd700;
   font-weight: 900;
@@ -539,6 +670,33 @@ td {
 @media (max-width: 1100px) {
   .recap-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+  .recap-container {
+    padding: 0;
+  }
+
+  .session-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .session-header h3 {
+    font-size: 0.9rem;
+  }
+
+  .card-header h4 {
+    font-size: 0.9rem;
+  }
+
+  .driver-name {
+    font-size: 1.2rem;
+  }
+
+  .insight-value {
+    font-size: 1.5rem;
   }
 }
 </style>

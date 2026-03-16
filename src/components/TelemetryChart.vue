@@ -46,11 +46,14 @@ const createChart = (
             if (chart) {
               const meta = chart.getDatasetMeta(index);
               // Toggle visibility
-              meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
+              meta.hidden =
+                meta.hidden === null
+                  ? !chart.data.datasets[index].hidden
+                  : null;
               chart.update();
             }
           });
-        }
+        },
       },
     },
   ];
@@ -352,5 +355,12 @@ watch(
   flex: 1;
   position: relative;
   min-height: 0; /* Important for flexbox resizing */
+}
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+  .telemetry-container {
+    height: 1500px; /* Keep total height large enough so charts aren't squished */
+  }
 }
 </style>

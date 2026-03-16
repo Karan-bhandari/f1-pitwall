@@ -73,6 +73,22 @@ def _extract_session_insights(session, results, s_name):
                         "laps": int(laps_count.max()),
                     }
 
+            # Add Speed King (Top Speed in session)
+            try:
+                if hasattr(session, "laps") and not session.laps.empty:
+                    laps = session.laps
+                    if "SpeedST" in laps.columns:
+                        valid_speed_laps = laps[laps["SpeedST"].notna()]
+                        if not valid_speed_laps.empty:
+                            max_speed_idx = valid_speed_laps["SpeedST"].idxmax()
+                            speed_king = valid_speed_laps.loc[max_speed_idx]
+                            insights["speed_king"] = {
+                                "abbreviation": str(speed_king["Driver"]),
+                                "value": float(speed_king["SpeedST"]),
+                            }
+            except Exception as sk_e:
+                print(f"[RECAP] Warning: Failed to extract practice speed king: {sk_e}", file=sys.stderr)
+
         # Qualifying Highlights
         elif "qualifying" in lname or "shootout" in lname:
             if results is not None and not results.empty:
@@ -80,6 +96,27 @@ def _extract_session_insights(session, results, s_name):
                     "full_name": str(results.iloc[0].get("FullName", "N/A")),
                     "time": format_timedelta(results.iloc[0].get("BestLapTime")),
                 }
+
+            # Add Sector Kings
+            try:
+                if hasattr(session, "laps") and not session.laps.empty:
+                    accurate_mask = session.laps["IsAccurate"].fillna(False).astype(bool)
+                    laps = session.laps[accurate_mask]
+                    if not laps.empty:
+                        sector_kings = {}
+                        for sector in ["Sector1Time", "Sector2Time", "Sector3Time"]:
+                            valid_sector_laps = laps[laps[sector].notna()]
+                            if not valid_sector_laps.empty:
+                                best_lap = valid_sector_laps.loc[valid_sector_laps[sector].idxmin()]
+                                # Use short keys like S1, S2, S3 for cleaner UI labels
+                                s_key = sector.replace("ector", "").replace("Time", "")
+                                sector_kings[s_key] = {
+                                    "abbreviation": str(best_lap["Driver"]),
+                                    "time": format_timedelta(best_lap[sector]),
+                                }
+                        insights["sector_kings"] = sector_kings
+            except Exception as sk_e:
+                print(f"[RECAP] Warning: Failed to extract sector kings: {sk_e}", file=sys.stderr)
 
         # Race / Sprint Highlights
         else:
@@ -109,9 +146,24 @@ def _extract_session_insights(session, results, s_name):
                             "abbreviation": str(fastest_lap["Driver"]),
                             "time": format_timedelta(fastest_lap["LapTime"]),
                         }
+
+                    # Add Winning Strategy (Tyre sequence for P1)
+                    if results is not None and not results.empty:
+                        winner_abbr = str(results.iloc[0]["Abbreviation"])
+                        winner_laps = session.laps.pick_drivers(winner_abbr)
+                        if not winner_laps.empty:
+                            stints = winner_laps.groupby("Stint")
+                            strategy = []
+                            for _, stint_laps in stints:
+                                strategy.append({
+                                    "compound": str(stint_laps["Compound"].iloc[0]),
+                                    "laps": int(len(stint_laps))
+                                })
+                            insights["winning_strategy"] = strategy
+
             except Exception as fl_e:
                 print(
-                    f"[RECAP] Warning: Failed to extract fastest lap for {s_name}: {fl_e}",
+                    f"[RECAP] Warning: Failed to extract extra race insights for {s_name}: {fl_e}",
                     file=sys.stderr,
                 )
     except Exception as e:
@@ -139,38 +191,31 @@ def get_weekend_summary():
         event_name = str(event["EventName"])
         sessions_data = {}
 
-        # Iterating 1-5 covers all F1 weekend formats
         for i in range(1, 6):
             try:
                 session = event.get_session(i)
                 s_name = session.name
 
-                # Load with caution
                 try:
-                    # Messages are required for Quali/Shootout to auto-calculate results from timing data
                     is_quali = any(
                         k in session.name.lower()
                         for k in ["qualifying", "shootout", "qualy"]
                     )
-                    # Load telemetry/weather=False for speed, but laps=True is needed for full classification
                     session.load(telemetry=False, weather=False, messages=is_quali)
                 except Exception as load_error:
                     print(
                         f"[RECAP] Load failed for session {s_name}: {load_error}",
                         file=sys.stderr,
                     )
-                    # Even if load fails, try to proceed if we have a results object (from cache/minimal load)
 
                 results = session.results
                 s_id = s_name.lower().replace(" ", "_")
                 lname = s_name.lower()
 
-                # --- Deep Fallback for Practice sessions with missing data ---
                 laps_fallback = {}
                 laps_count_fallback = {}
 
                 if "practice" in lname or "fp" in lname:
-                    # Safely check if results has the data we need
                     has_results_data = False
                     if results is not None and not results.empty:
                         has_best_time = (
@@ -200,7 +245,6 @@ def get_weekend_summary():
                             session.laps.groupby("Driver").size().to_dict()
                         )
 
-                # If we still have NO results and NO fallback data, skip this session
                 if (results is None or results.empty) and not laps_fallback:
                     print(
                         f"[RECAP] Skipping {s_name}: No results or lap data available.",
@@ -220,18 +264,11 @@ def get_weekend_summary():
                     "insights": _extract_session_insights(session, results, s_name),
                 }
 
-                # Use results or fallback to entry list if results is empty
                 drivers_to_process = (
                     results.iterrows()
                     if results is not None and not results.empty
                     else []
                 )
-
-                # If results is empty but we have fallback data, use the session entry list
-                if (results is None or results.empty) and laps_fallback:
-                    # session.results might be empty, but we can iterate over the entry list if needed
-                    # but usually session.results exists but has empty columns.
-                    pass
 
                 for idx, (_, driver) in enumerate(drivers_to_process):
                     entry_pos = idx + 1
@@ -266,7 +303,7 @@ def get_weekend_summary():
                                 "laps": int(laps_count) if pd.notna(laps_count) else 0,
                             }
                         )
-                    elif is_quali:  # is_quali was defined during loading
+                    elif is_quali:
                         entry.update(
                             {
                                 "q1": format_timedelta(driver.get("Q1")),
@@ -277,7 +314,7 @@ def get_weekend_summary():
                                 ),
                             }
                         )
-                    else:  # Race / Sprint (Race)
+                    else:
                         entry.update(
                             {
                                 "points": (
@@ -311,7 +348,6 @@ def get_weekend_summary():
         if not sessions_data:
             return error_response(f"No results found for {event_name}.", 404)
 
-        # Convert dictionary to a list sorted by session_index
         sorted_sessions = sorted(
             sessions_data.values(), key=lambda x: x["session_index"]
         )

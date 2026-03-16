@@ -509,4 +509,35 @@ const getSectorColor = (status) => {
   background: var(--border-color);
   border-radius: 4px;
 }
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+  .driver-header {
+    width: 85px;
+    padding-right: 0.5rem;
+  }
+  .driver-name {
+    font-size: 1.1rem;
+  }
+  .team-name {
+    font-size: 0.6rem;
+    white-space: normal;
+  }
+  .team-stripe {
+    width: 4px;
+    height: 32px;
+  }
+  .lap-pill {
+    min-width: 160px;
+    padding: 0.5rem 1rem;
+  }
+  .lap-time {
+    font-size: 1rem;
+  }
+  .lap-pill.out,
+  .lap-pill.in,
+  .lap-pill.prep {
+    min-width: 80px;
+  }
+}
 </style>
