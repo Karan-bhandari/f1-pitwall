@@ -1,12 +1,17 @@
 <script setup>
-import { onMounted, ref, watch } from "vue";
+import { onMounted, ref, watch, computed } from "vue";
 // Chart.js is loaded from a CDN in index.html, so it's globally available.
 
 const props = defineProps({
   telemetryData: Object,
   isLoading: Boolean,
   error: String,
+  year: Number,
 });
+
+// DRS was introduced in 2011 and is currently planned to be replaced by
+// active aero in the 2026 regulations.
+const hasDRS = computed(() => props.year >= 2011 && props.year <= 2025);
 
 let chartInstances = [];
 
@@ -27,9 +32,9 @@ const createChart = (
       title: {
         display: true,
         text: label,
-        font: { size: 16 }, // Increased font size
-        align: "start", // Align title to the left
-        padding: { top: 10, bottom: 10 }, // Reduced bottom padding as we align start
+        font: { size: 16 },
+        align: "start",
+        padding: { top: 10, bottom: 10 },
       },
       tooltip: {
         enabled: true,
@@ -37,15 +42,13 @@ const createChart = (
         intersect: false,
       },
       legend: {
-        display: canvasId === "speed-chart", // Only show legend on top chart
-        weight: 3000, // Push legend to the very top, above the title
+        display: canvasId === "speed-chart",
+        weight: 3000,
         onClick: (e, legendItem, legend) => {
           const index = legendItem.datasetIndex;
-          // Synchronize visibility across all charts
           chartInstances.forEach((chart) => {
             if (chart) {
               const meta = chart.getDatasetMeta(index);
-              // Toggle visibility
               meta.hidden =
                 meta.hidden === null
                   ? !chart.data.datasets[index].hidden
@@ -64,7 +67,6 @@ const createChart = (
       beforeDraw: (chart) => {
         const ctx = chart.ctx;
         const xAxis = chart.scales.x;
-        const yAxis = chart.scales.y;
         const { top, bottom } = chart.chartArea;
 
         ctx.save();
@@ -72,45 +74,37 @@ const createChart = (
         ctx.fillStyle = "gray";
         ctx.strokeStyle = "gray";
         ctx.lineWidth = 1;
-        ctx.setLineDash([2, 2]); // Dotted line
+        ctx.setLineDash([2, 2]);
 
         turnData.forEach((turn) => {
           const x = xAxis.getPixelForValue(turn.distance);
-
-          // Only draw if within chart area
           if (x >= xAxis.left && x <= xAxis.right) {
             ctx.beginPath();
-
-            // Continuous Line Logic
             if (canvasId === "speed-chart") {
-              // Top chart: Start below legend/title, go to bottom edge
               ctx.moveTo(x, top);
               ctx.lineTo(x, chart.height);
-            } else if (canvasId === "rpm-chart") {
-              // Bottom chart: Start at top edge, stop at X-axis
+            } else if (
+              canvasId === "rpm-chart" ||
+              (canvasId === "drs-chart" && hasDRS.value)
+            ) {
+              // The bottom-most chart stops at the X-axis
               ctx.moveTo(x, 0);
               ctx.lineTo(x, bottom);
             } else {
-              // Middle charts: Span entire height
               ctx.moveTo(x, 0);
               ctx.lineTo(x, chart.height);
             }
-
             ctx.stroke();
-
-            // Draw Label only on the top chart
             if (canvasId === "speed-chart") {
               ctx.fillText(`T${turn.number}`, x, top - 10);
             }
           }
         });
-
         ctx.restore();
       },
     });
   }
 
-  // Y-Axis Ticks configuration
   const yTicks = {};
   if (canvasId === "rpm-chart") {
     yTicks.callback = function (value) {
@@ -121,7 +115,7 @@ const createChart = (
   return new Chart(ctx, {
     type: "line",
     data: {
-      labels: datasets[0].data.map((d) => d.x), // Use distance from first dataset
+      labels: datasets[0].data.map((d) => d.x),
       datasets: datasets,
     },
     options: {
@@ -129,17 +123,13 @@ const createChart = (
       maintainAspectRatio: false,
       animation: false,
       layout: {
-        padding: {
-          top: 30, // Increased padding for markers
-          right: 20, // Ensure consistent right padding for alignment
-        },
+        padding: { top: 30, right: 20 },
       },
       interaction: {
         mode: "index",
         intersect: false,
       },
       plugins: {
-        // Merge the title/tooltip/legend config with our custom plugin
         title: plugins[0].title,
         tooltip: plugins[0].tooltip,
         legend: plugins[0].legend,
@@ -147,38 +137,33 @@ const createChart = (
       scales: {
         x: {
           type: "linear",
-          min: 0, // Ensure the lap always starts at 0m on the chart
-          display: canvasId === "rpm-chart", // Only show x-axis on bottom chart
+          min: 0,
+          display:
+            (canvasId === "rpm-chart" && !hasDRS.value) ||
+            canvasId === "drs-chart",
           title: { display: true, text: "Distance (m)" },
           ticks: { maxTicksLimit: 10 },
-          grid: {
-            display: false, // Remove standard vertical grid lines
-          },
+          grid: { display: false },
         },
         y: {
           title: { display: true, text: yAxisLabel },
           min: yMin,
-          suggestedMax: yMax, // Use suggestedMax to allow grace to work
-          ticks: yTicks, // Apply custom ticks if defined
-          grace: "10%", // Add breathing room at top/bottom
+          suggestedMax: yMax,
+          ticks: yTicks,
+          grace: "10%",
           afterFit: (scale) => {
-            scale.width = 60; // Fixed width for alignment
+            scale.width = 60;
           },
-          grid: {
-            color: "rgba(200, 200, 200, 0.2)", // A light, semi-transparent color for dark mode
-          },
+          grid: { color: "rgba(200, 200, 200, 0.2)" },
         },
       },
-      elements: {
-        point: { radius: 0 }, // Hide points for performance
-      },
+      elements: { point: { radius: 0 } },
     },
-    plugins: plugins, // Register the plugins array
+    plugins: plugins,
   });
 };
 
 const renderCharts = (data) => {
-  // Destroy existing charts
   chartInstances.forEach((chart) => chart.destroy());
   chartInstances = [];
 
@@ -188,24 +173,25 @@ const renderCharts = (data) => {
   const d2 = data.driver2;
   const turns = data.circuit_info?.turns || [];
 
-  // Color Logic
   let c1 = d1.team_color ? `#${d1.team_color}` : "#ff0000";
   let c2 = d2.team_color ? `#${d2.team_color}` : "#0000ff";
 
-  // Differentiate same team colors
   if (c1.toLowerCase() === c2.toLowerCase()) {
-    // Make driver 2 lighter/different
     c2 = adjustColor(c1, 40);
   }
 
-  const createDataset = (driverData, label, color, key) => ({
+  const createDataset = (driverData, label, color, key, isDrs = false) => ({
     label: `${driverData.abbreviation} (Lap ${driverData.lap_number})`,
-    data: driverData.telemetry.map((t) => ({ x: t.distance, y: t[key] })),
+    data: driverData.telemetry.map((t) => ({
+      x: t.distance,
+      y: isDrs ? (t.drs ? 1 : 0) : t[key],
+    })),
     borderColor: color,
-    backgroundColor: color, // Added to ensure filled rectangles in legend
+    backgroundColor: color,
     borderWidth: 1.5,
     fill: false,
     tension: 0,
+    stepped: isDrs ? "before" : false,
   });
 
   // Speed
@@ -223,7 +209,6 @@ const renderCharts = (data) => {
       turns,
     ),
   );
-
   // Throttle
   chartInstances.push(
     createChart(
@@ -239,7 +224,6 @@ const renderCharts = (data) => {
       turns,
     ),
   );
-
   // Brake
   chartInstances.push(
     createChart(
@@ -255,7 +239,6 @@ const renderCharts = (data) => {
       turns,
     ),
   );
-
   // Gear
   chartInstances.push(
     createChart(
@@ -271,7 +254,6 @@ const renderCharts = (data) => {
       turns,
     ),
   );
-
   // RPM
   chartInstances.push(
     createChart(
@@ -287,9 +269,26 @@ const renderCharts = (data) => {
       turns,
     ),
   );
+
+  // DRS (Conditional)
+  if (hasDRS.value) {
+    chartInstances.push(
+      createChart(
+        "drs-chart",
+        "DRS",
+        [
+          createDataset(d1, "DRS", c1, "drs", true),
+          createDataset(d2, "DRS", c2, "drs", true),
+        ],
+        "On/Off",
+        0,
+        1,
+        turns,
+      ),
+    );
+  }
 };
 
-// Helper to lighten/darken color
 function adjustColor(color, amount) {
   return (
     "#" +
@@ -308,7 +307,6 @@ watch(
   () => props.telemetryData,
   (newData) => {
     if (newData) {
-      // Use setTimeout to ensure DOM elements exist
       setTimeout(() => renderCharts(newData), 0);
     } else {
       chartInstances.forEach((chart) => chart.destroy());
@@ -324,12 +322,19 @@ watch(
     <p v-if="isLoading" class="loading-text">Loading telemetry data...</p>
     <p v-if="error" class="error-text">{{ error }}</p>
 
-    <div v-if="telemetryData" class="telemetry-container">
+    <div
+      v-if="telemetryData"
+      class="telemetry-container"
+      :style="{ height: hasDRS ? '1800px' : '1500px' }"
+    >
       <div class="chart-row"><canvas id="speed-chart"></canvas></div>
       <div class="chart-row"><canvas id="throttle-chart"></canvas></div>
       <div class="chart-row"><canvas id="brake-chart"></canvas></div>
       <div class="chart-row"><canvas id="gear-chart"></canvas></div>
       <div class="chart-row"><canvas id="rpm-chart"></canvas></div>
+      <div v-if="hasDRS" class="chart-row">
+        <canvas id="drs-chart"></canvas>
+      </div>
     </div>
   </div>
 </template>
@@ -348,19 +353,11 @@ watch(
 .telemetry-container {
   display: flex;
   flex-direction: column;
-  height: 1500px; /* Total height for all charts */
-  /* gap: 10px; Removed to allow continuous lines */
+  transition: height 0.3s ease;
 }
 .chart-row {
   flex: 1;
   position: relative;
-  min-height: 0; /* Important for flexbox resizing */
-}
-
-/* --- Mobile Responsiveness --- */
-@media (max-width: 768px) {
-  .telemetry-container {
-    height: 1500px; /* Keep total height large enough so charts aren't squished */
-  }
+  min-height: 0;
 }
 </style>

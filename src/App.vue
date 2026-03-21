@@ -377,9 +377,9 @@ onMounted(() => {
         :telemetryData="telemetryData"
         :isLoading="isLoadingTelemetry"
         :error="telemetryError"
+        :year="Number(year)"
       />
     </template>
-
     <template v-else-if="viewMode === 'summary' && summaryData">
       <QualifyingSummary
         v-if="isQualifyingSession"

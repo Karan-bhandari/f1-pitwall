@@ -247,7 +247,10 @@ def get_lap_telemetry():
     try:
         # Check for telemetry support based on year
         if year < 2018:
-            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+            return error_response(
+                "High-resolution telemetry is not available for seasons before 2018.",
+                400,
+            )
 
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=True, weather=False, messages=False)
@@ -308,7 +311,9 @@ def get_lap_telemetry():
                         "brake": (
                             bool(point["Brake"]) if pd.notna(point["Brake"]) else None
                         ),
-                        "drs": int(point["DRS"]) if pd.notna(point["DRS"]) else None,
+                        "drs": (
+                            int(point["DRS"]) >= 10 if pd.notna(point["DRS"]) else False
+                        ),
                         "n_gear": (
                             int(point["nGear"]) if pd.notna(point["nGear"]) else None
                         ),
@@ -415,22 +420,22 @@ def get_fastest_lap():
         # Safely handle Deleted boolean with fillna and explicit casting
         mask1 = driver1_laps["Deleted"].fillna(False).astype(bool)
         driver1_valid_laps = (
-            driver1_laps[~mask1]
-            if "Deleted" in driver1_laps.columns
-            else driver1_laps
+            driver1_laps[~mask1] if "Deleted" in driver1_laps.columns else driver1_laps
         )
         mask2 = driver2_laps["Deleted"].fillna(False).astype(bool)
         driver2_valid_laps = (
-            driver2_laps[~mask2]
-            if "Deleted" in driver2_laps.columns
-            else driver2_laps
+            driver2_laps[~mask2] if "Deleted" in driver2_laps.columns else driver2_laps
         )
 
         driver1_fastest = driver1_valid_laps.loc[driver1_valid_laps["LapTime"].idxmin()]
         driver2_fastest = driver2_valid_laps.loc[driver2_valid_laps["LapTime"].idxmin()]
 
-        driver1_fastest_telemetry = driver1_fastest.get_telemetry() if use_telemetry else pd.DataFrame()
-        driver2_fastest_telemetry = driver2_fastest.get_telemetry() if use_telemetry else pd.DataFrame()
+        driver1_fastest_telemetry = (
+            driver1_fastest.get_telemetry() if use_telemetry else pd.DataFrame()
+        )
+        driver2_fastest_telemetry = (
+            driver2_fastest.get_telemetry() if use_telemetry else pd.DataFrame()
+        )
 
         def format_telemetry(telemetry, driver_number, lap_number):
             if telemetry.empty:
@@ -464,7 +469,9 @@ def get_fastest_lap():
                         "brake": (
                             bool(point["Brake"]) if pd.notna(point["Brake"]) else None
                         ),
-                        "drs": int(point["DRS"]) if pd.notna(point["DRS"]) else None,
+                        "drs": (
+                            int(point["DRS"]) >= 10 if pd.notna(point["DRS"]) else False
+                        ),
                         "n_gear": (
                             int(point["nGear"]) if pd.notna(point["nGear"]) else None
                         ),
@@ -569,6 +576,32 @@ def get_race_summary():
         if laps.empty:
             return jsonify({"results": [], "total_laps": 0}), 200
 
+        # --- Position Fallback for Practice sessions ---
+        is_practice = not is_quali and "race" not in session_name.lower()
+        if is_practice and results is not None and not results.empty:
+            # Practice sessions often have NaN positions in results
+            if "Position" not in results.columns or results["Position"].isna().all():
+                # Ensure we have BestLapTime data to sort by
+                if (
+                    "BestLapTime" not in results.columns
+                    or results["BestLapTime"].isna().all()
+                ):
+                    if not laps.empty:
+                        best_times = laps.groupby("Driver")["LapTime"].min().to_dict()
+                        results["BestLapTime"] = results["Abbreviation"].map(best_times)
+
+                if (
+                    "BestLapTime" in results.columns
+                    and results["BestLapTime"].notna().any()
+                ):
+                    has_time = results["BestLapTime"].notna()
+                    results_with_time = results[has_time].sort_values("BestLapTime")
+                    results_no_time = results[~has_time]
+
+                    results_with_time["Position"] = range(1, len(results_with_time) + 1)
+                    results_no_time["Position"] = 20
+                    results = pd.concat([results_with_time, results_no_time])
+
         # 1 & 2. Determine phase intervals and assign phases to laps using FastF1 built-in method
         laps["Phase"] = "Session"
         is_sprint_quali = "sprint" in session_name.lower()
@@ -624,13 +657,17 @@ def get_race_summary():
                 unique_phases = fallback_phases
 
         # 4. Calculate phase-specific bests for Purple coloring
-        phases_to_compute = unique_phases + ["Session"] if "Session" not in unique_phases else unique_phases
+        phases_to_compute = (
+            unique_phases + ["Session"]
+            if "Session" not in unique_phases
+            else unique_phases
+        )
         phase_bests = {}
         for p in phases_to_compute:
             # Safely handle IsAccurate boolean with fillna and explicit casting
             accurate_mask = laps["IsAccurate"].fillna(False).astype(bool)
             p_laps = laps[(laps["Phase"] == p) & accurate_mask]
-            
+
             if p_laps.empty:
                 p_laps = laps[laps["Phase"] == p]
 
@@ -717,7 +754,7 @@ def get_race_summary():
                 # Safely handle IsAccurate boolean with fillna and explicit casting
                 accurate_mask = driver_laps["IsAccurate"].fillna(False).astype(bool)
                 dp_laps = driver_laps[(driver_laps["Phase"] == p) & accurate_mask]
-                
+
                 if dp_laps.empty:
                     dp_laps = driver_laps[driver_laps["Phase"] == p]
                 if dp_laps.empty:
@@ -759,8 +796,12 @@ def get_race_summary():
                             continue
 
                         # Safely handle IsAccurate boolean
-                        is_acc = bool(lap["IsAccurate"]) if pd.notna(lap["IsAccurate"]) else False
-                        
+                        is_acc = (
+                            bool(lap["IsAccurate"])
+                            if pd.notna(lap["IsAccurate"])
+                            else False
+                        )
+
                         lap_type = (
                             "push"
                             if is_acc
@@ -795,7 +836,11 @@ def get_race_summary():
                                 ),
                                 "type": lap_type,
                                 "phase": curr_p,
-                                "is_pb": bool(lap["IsPersonalBest"]) if pd.notna(lap["IsPersonalBest"]) else False,
+                                "is_pb": (
+                                    bool(lap["IsPersonalBest"])
+                                    if pd.notna(lap["IsPersonalBest"])
+                                    else False
+                                ),
                                 "compound": str(lap["Compound"]),
                                 "sectors": {
                                     "s1": {
