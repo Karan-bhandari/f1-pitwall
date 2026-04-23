@@ -74,3 +74,24 @@ def format_timedelta(td):
     seconds = int(total_seconds % 60)
     milliseconds = int((total_seconds * 1000) % 1000)
     return f"{minutes}:{seconds:02d}.{milliseconds:03d}"
+
+
+def format_ergast_driver(driver_row):
+    """Format a single Ergast result row into a standardized driver dict.
+
+    Used across schedule, recap, and telemetry blueprints to avoid
+    duplicating the same field-mapping logic for historical (pre-2018) data.
+    """
+    abbrev = (
+        str(driver_row.get("driverCode"))
+        if pd.notna(driver_row.get("driverCode"))
+        else str(driver_row.get("familyName", "??"))[:3].upper()
+    )
+    return {
+        "driver_number": str(driver_row.get("number", "??")),
+        "abbreviation": abbrev,
+        "full_name": f"{driver_row.get('givenName', '')} {driver_row.get('familyName', '')}".strip(),
+        "team_name": str(driver_row.get("constructorName", "Unknown")),
+        "team_id": str(driver_row.get("constructorId", "")),
+        "team_color": get_historical_team_color(driver_row.get("constructorId")),
+    }

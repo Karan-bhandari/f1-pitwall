@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, watch, computed } from "vue";
+import { onMounted, onBeforeUnmount, ref, watch, computed } from "vue";
 // Chart.js is loaded from a CDN in index.html, so it's globally available.
 
 const props = defineProps({
@@ -315,6 +315,11 @@ watch(
   },
   { deep: true },
 );
+
+onBeforeUnmount(() => {
+  chartInstances.forEach((chart) => chart.destroy());
+  chartInstances = [];
+});
 </script>
 
 <template>

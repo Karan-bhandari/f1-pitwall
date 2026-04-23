@@ -1,10 +1,6 @@
 <script setup>
-import { onMounted, ref, watch } from "vue";
-import softTyre from "@/assets/tyres/soft.svg";
-import mediumTyre from "@/assets/tyres/medium.svg";
-import hardTyre from "@/assets/tyres/hard.svg";
-import intermediateTyre from "@/assets/tyres/intermediate.svg";
-import wetTyre from "@/assets/tyres/wet.svg";
+import { onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { adjustColor, formatLapTime, TYRE_ICONS } from "../utils";
 
 // Chart.js is loaded from a CDN in index.html
 
@@ -14,22 +10,9 @@ const props = defineProps({
   error: String,
 });
 
-const tyreIcons = {
-  SOFT: softTyre,
-  MEDIUM: mediumTyre,
-  HARD: hardTyre,
-  INTERMEDIATE: intermediateTyre,
-  WET: wetTyre,
-};
-
 let chartInstance = null;
 
-const formatLapTime = (seconds) => {
-  if (seconds === null || isNaN(seconds)) return "N/A";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = (seconds % 60).toFixed(3);
-  return `${minutes}:${String(remainingSeconds).padStart(6, "0")}`;
-};
+
 
 const renderChart = (data) => {
   const ctx = document.getElementById("lap-time-chart-canvas");
@@ -223,7 +206,7 @@ const renderChart = (data) => {
 
         if (lapData && lapData.compound) {
           const compound = lapData.compound.toUpperCase();
-          const iconSrc = tyreIcons[compound];
+          const iconSrc = TYRE_ICONS[compound];
           if (iconSrc) {
             const img = document.createElement("img");
             img.src = iconSrc;
@@ -316,20 +299,7 @@ const renderChart = (data) => {
   });
 };
 
-// Helper to lighten/darken color (reused from TelemetryChart)
-function adjustColor(color, amount) {
-  return (
-    "#" +
-    color
-      .replace(/^#/, "")
-      .replace(/../g, (color) =>
-        (
-          "0" +
-          Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)
-        ).substr(-2),
-      )
-  );
-}
+
 
 watch(
   () => props.raceComparison,
@@ -343,6 +313,13 @@ watch(
   },
   { deep: true },
 );
+
+onBeforeUnmount(() => {
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+});
 </script>
 
 <template>

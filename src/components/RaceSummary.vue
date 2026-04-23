@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import { getTyreColor, getTyreIcon } from "../utils";
 
 const props = defineProps({
   summaryData: {
@@ -20,29 +21,6 @@ const props = defineProps({
     default: 2024,
   },
 });
-
-const getTyreColor = (compound) => {
-  const colors = {
-    SOFT: "#ff3333",
-    MEDIUM: "#ffff00",
-    HARD: "#ffffff",
-    INTERMEDIATE: "#00ff00",
-    WET: "#0000ff",
-  };
-  return colors[compound.toUpperCase()] || "#777777";
-};
-
-const getTyreIcon = (compound) => {
-  const c = compound.toUpperCase();
-  let name = "hard";
-  if (c.includes("SOFT")) name = "soft";
-  else if (c.includes("MEDIUM")) name = "medium";
-  else if (c.includes("HARD")) name = "hard";
-  else if (c.includes("INTERMEDIATE")) name = "intermediate";
-  else if (c.includes("WET")) name = "wet";
-
-  return new URL(`../assets/tyres/${name}.svg`, import.meta.url).href;
-};
 
 const sortedResults = computed(() => {
   if (!props.summaryData?.results) return [];

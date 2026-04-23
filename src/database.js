@@ -2,45 +2,10 @@ import Dexie from "dexie";
 
 export const db = new Dexie("F1TelemetryCache");
 
-// Define the database schema.
-// 'url' is the primary key (the API endpoint URL).
-// 'timestamp' is an index to allow for cache invalidation.
+// Single schema version. Cache busting is handled by the CACHE_VERSION
+// constant in api.js which appends a version param to every URL.
+// Incrementing CACHE_VERSION there automatically invalidates stale entries
+// without needing a new Dexie schema migration each time.
 db.version(1).stores({
   api_cache: "&url, timestamp",
 });
-
-// Version 2: Clear cache to ensure users get the new turn data
-db.version(2)
-  .stores({
-    api_cache: "&url, timestamp",
-  })
-  .upgrade((trans) => {
-    return trans.table("api_cache").clear();
-  });
-
-// Version 3: Clear cache to ensure users get the new lap time formatting
-db.version(3)
-  .stores({
-    api_cache: "&url, timestamp",
-  })
-  .upgrade((trans) => {
-    return trans.table("api_cache").clear();
-  });
-
-// Version 4: Clear cache to ensure robust Q1/Q2/Q3 phase buttons for historical sessions
-db.version(4)
-  .stores({
-    api_cache: "&url, timestamp",
-  })
-  .upgrade((trans) => {
-    return trans.table("api_cache").clear();
-  });
-
-// Version 5: Clear cache to ensure correct Q1/Q2/Q3 lap assignments using fastf1 built-in split
-db.version(5)
-  .stores({
-    api_cache: "&url, timestamp",
-  })
-  .upgrade((trans) => {
-    return trans.table("api_cache").clear();
-  });

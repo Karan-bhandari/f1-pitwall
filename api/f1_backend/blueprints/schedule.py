@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import fastf1
 import pandas as pd
-from ..utils import validate_year, error_response, get_historical_team_color
+from ..utils import validate_year, error_response, get_historical_team_color, format_ergast_driver
 
 schedule_bp = Blueprint("schedule", __name__)
 
@@ -126,17 +126,11 @@ def get_drivers():
             if res.content and not res.content[0].empty:
                 df = res.content[0]
                 for idx, driver_info in df.iterrows():
-                    abbrev = str(driver_info.get("driverCode")) if pd.notna(driver_info.get("driverCode")) else str(driver_info.get("familyName", "??"))[:3].upper()
-                    drivers.append({
-                        "driver_number": str(driver_info.get("number", "??")),
-                        "abbreviation": abbrev,
-                        "full_name": f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')}".strip(),
-                        "team": str(driver_info.get("constructorName", "Unknown")),
-                        "team_id": str(driver_info.get("constructorId", "")),
-                        "team_color": get_historical_team_color(driver_info.get("constructorId")),
-                        "display_name": f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')} ({abbrev})".strip(),
-                        "driver_key": abbrev,
-                    })
+                    base = format_ergast_driver(driver_info)
+                    base["team"] = base.pop("team_name")
+                    base["display_name"] = f"{base['full_name']} ({base['abbreviation']})"
+                    base["driver_key"] = base["abbreviation"]
+                    drivers.append(base)
             return jsonify({"drivers": drivers}), 200
 
         session = fastf1.get_session(year, event_key, session_name)

@@ -1,12 +1,6 @@
 <script setup>
 import { ref, computed, watch } from "vue";
-
-// Import assets directly
-import hardTyre from "../assets/tyres/hard.svg";
-import mediumTyre from "../assets/tyres/medium.svg";
-import softTyre from "../assets/tyres/soft.svg";
-import interTyre from "../assets/tyres/intermediate.svg";
-import wetTyre from "../assets/tyres/wet.svg";
+import { getTyreIcon, formatLapTimeString } from "../utils";
 
 const props = defineProps({
   summaryData: {
@@ -58,15 +52,7 @@ watch(
   { immediate: true },
 );
 
-const getTyreIcon = (compound) => {
-  const c = compound?.toUpperCase() || "HARD";
-  if (c.includes("SOFT")) return softTyre;
-  if (c.includes("MEDIUM")) return mediumTyre;
-  if (c.includes("HARD")) return hardTyre;
-  if (c.includes("INTERMEDIATE")) return interTyre;
-  if (c.includes("WET")) return wetTyre;
-  return hardTyre;
-};
+
 
 const getBestTimeInPhase = (driver, phase) => {
   let best = Infinity;
@@ -112,16 +98,9 @@ const filteredResults = computed(() => {
   });
 });
 
-const formatLapTime = (timeStr) => {
-  if (!timeStr) return "--";
-  const parts = timeStr.split(":");
-  if (parts.length < 3) return timeStr;
-  const mins = parseInt(parts[1]);
-  const secs = parseFloat(parts[2]).toFixed(3);
-  return `${mins}:${secs.padStart(6, "0")}`;
-};
+const formatLapTime = (timeStr) => formatLapTimeString(timeStr);
 
-const getSectorColor = (status) => {
+const getSectorColorForTheme = (status) => {
   const isDark = props.theme === "dark";
   switch (status) {
     case "purple":
@@ -233,7 +212,7 @@ const getSectorColor = (status) => {
                         <span
                           class="s-val"
                           :style="{
-                            color: getSectorColor(lap.sectors.s1.status),
+                            color: getSectorColorForTheme(lap.sectors.s1.status),
                           }"
                           >{{ lap.sectors.s1.time?.toFixed(3) || "--" }}</span
                         >
@@ -243,7 +222,7 @@ const getSectorColor = (status) => {
                         <span
                           class="s-val"
                           :style="{
-                            color: getSectorColor(lap.sectors.s2.status),
+                            color: getSectorColorForTheme(lap.sectors.s2.status),
                           }"
                           >{{ lap.sectors.s2.time?.toFixed(3) || "--" }}</span
                         >
@@ -253,7 +232,7 @@ const getSectorColor = (status) => {
                         <span
                           class="s-val"
                           :style="{
-                            color: getSectorColor(lap.sectors.s3.status),
+                            color: getSectorColorForTheme(lap.sectors.s3.status),
                           }"
                           >{{ lap.sectors.s3.time?.toFixed(3) || "--" }}</span
                         >

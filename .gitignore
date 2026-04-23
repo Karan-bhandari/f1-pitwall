@@ -35,6 +35,7 @@ api/.python-version
 api/uv.lock
 api/*.ipynb
 api/instance/
+instance/
 frontend/.vscode/
 
 # Agent & Skill Development
@@ -60,3 +61,5 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+tests/*

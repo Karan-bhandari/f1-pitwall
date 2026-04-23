@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import { getWeekendSummary } from "../api";
+import { getTyreColor } from "../utils";
 
 const props = defineProps({
   year: { type: Number, required: true },
@@ -76,16 +77,7 @@ const isPracticeType = (name) => {
   return n.includes("practice") || n.includes("fp");
 };
 
-const getTyreColor = (compound) => {
-  const colors = {
-    SOFT: "#ff3333",
-    MEDIUM: "#ffff00",
-    HARD: "#ffffff",
-    INTERMEDIATE: "#00ff00",
-    WET: "#0000ff",
-  };
-  return colors[compound.toUpperCase()] || "#777777";
-};
+
 </script>
 
 <template>

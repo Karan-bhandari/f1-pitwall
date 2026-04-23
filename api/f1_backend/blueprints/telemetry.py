@@ -5,7 +5,7 @@ import numpy as np
 import sys
 import traceback
 from datetime import datetime
-from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color
+from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color, format_ergast_driver
 
 telemetry_bp = Blueprint("telemetry", __name__)
 
@@ -566,7 +566,7 @@ def get_race_summary():
     session_name = request.args.get("session_name", type=str)
 
     if not all([year, event_key, session_name]):
-        return error_response("Missing parameters are required.")
+        return error_response("Year, event_key, and session_name parameters are required.")
 
     try:
         if year < 2018:
@@ -585,15 +585,8 @@ def get_race_summary():
                 df = res.content[0]
                 for idx, driver in df.iterrows():
                     pos = int(driver.get("position", idx + 1))
-                    abbrev = str(driver.get("driverCode")) if pd.notna(driver.get("driverCode")) else str(driver.get("familyName", "??"))[:3].upper()
-                    entry = {
-                        "driver_number": str(driver.get("number", "??")),
-                        "abbreviation": abbrev,
-                        "full_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
-                        "team_name": str(driver.get("constructorName", "Unknown")),
-                        "team_color": get_historical_team_color(driver.get("constructorId")),
-                        "position": pos,
-                    }
+                    base = format_ergast_driver(driver)
+                    entry = {**base, "position": pos}
                     summary_data.append(entry)
             return jsonify({"results": summary_data, "total_laps": 0, "available_phases": [], "track_status_events": []}), 200
 

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import sys
 import traceback
-from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color
+from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color, format_ergast_driver
 
 recap_bp = Blueprint("recap", __name__)
 
@@ -35,14 +35,10 @@ def _get_historical_weekend_summary(year, event, event_name):
             podium = []
             for idx, driver in df.iterrows():
                 pos = int(driver.get("position", idx + 1))
-                abbrev = str(driver.get("driverCode")) if pd.notna(driver.get("driverCode")) else str(driver.get("familyName", "??"))[:3].upper()
+                base = format_ergast_driver(driver)
                 entry = {
+                    **base,
                     "pos": pos,
-                    "driver_number": str(driver.get("number", "??")),
-                    "abbreviation": abbrev,
-                    "full_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
-                    "team_name": str(driver.get("constructorName", "Unknown")),
-                    "team_color": get_historical_team_color(driver.get("constructorId")),
                     "status": str(driver.get("status", "Finished")),
                     "points": int(float(driver.get("points", 0))) if pd.notna(driver.get("points")) else 0,
                     "grid_pos": int(driver.get("grid", 0)) if pd.notna(driver.get("grid")) else None,
@@ -83,17 +79,13 @@ def _get_historical_weekend_summary(year, event, event_name):
                 }
             for idx, driver in df.iterrows():
                 pos = int(driver.get("position", idx + 1))
-                abbrev = str(driver.get("driverCode")) if pd.notna(driver.get("driverCode")) else str(driver.get("familyName", "??"))[:3].upper()
                 q_best = driver.get("Q3") if "Q3" in df.columns else None
                 if pd.isna(q_best) and "Q2" in df.columns: q_best = driver.get("Q2")
                 if pd.isna(q_best) and "Q1" in df.columns: q_best = driver.get("Q1")
+                base = format_ergast_driver(driver)
                 entry = {
+                    **base,
                     "pos": pos,
-                    "driver_number": str(driver.get("number", "??")),
-                    "abbreviation": abbrev,
-                    "full_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
-                    "team_name": str(driver.get("constructorName", "Unknown")),
-                    "team_color": get_historical_team_color(driver.get("constructorId")),
                     "status": "Finished",
                     "q1": safe_format_td(driver.get("Q1")) if "Q1" in df.columns else "-",
                     "q2": safe_format_td(driver.get("Q2")) if "Q2" in df.columns else "-",
