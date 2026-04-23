@@ -102,7 +102,10 @@ const getTyreColor = (compound) => {
 
     <div v-else-if="recapData" class="content">
       <header class="recap-header">
-        <h1>{{ recapData.event_name }} Recap</h1>
+        <h1>
+          {{ recapData.event_name }} Recap
+          <span v-if="props.year < 2018" class="badge no-telemetry">NO TELEMETRY</span>
+        </h1>
         <div class="header-meta">
           <span>{{ props.year }} Season</span>
           <span class="divider">|</span>
@@ -352,6 +355,20 @@ const getTyreColor = (compound) => {
   font-size: 2rem;
   color: var(--primary-color);
   text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge.no-telemetry {
+  font-size: 0.8rem;
+  background-color: var(--accent-color);
+  color: var(--primary-color);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--primary-color);
+  font-weight: 800;
   letter-spacing: 1px;
 }
 

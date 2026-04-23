@@ -25,6 +25,11 @@ const props = defineProps({
     type: String,
     default: "dark",
   },
+  year: {
+    type: Number,
+    required: false,
+    default: 2024,
+  },
 });
 
 const selectedPhase = ref("");
@@ -80,6 +85,7 @@ const getBestTimeInPhase = (driver, phase) => {
 
 const filteredResults = computed(() => {
   if (!props.summaryData?.results) return [];
+  if (props.year < 2018) return props.summaryData.results;
 
   const phase = selectedPhase.value || availablePhases.value[0];
   const phaseNum = parseInt(phase.replace(/^\D+/g, "")) || 1;
@@ -132,7 +138,7 @@ const getSectorColor = (status) => {
 
 <template>
   <div class="qualifying-summary-container">
-    <div class="summary-controls">
+    <div class="summary-controls" v-if="year >= 2018">
       <div class="phase-selector">
         <button
           v-for="phase in availablePhases"
@@ -155,6 +161,10 @@ const getSectorColor = (status) => {
     </div>
 
     <div v-else-if="summaryData" class="summary-scroll-area">
+      <div v-if="year < 2018" class="historical-note">
+        <p>Note: Detailed lap data is not available for this era. See Weekend Recap for classification.</p>
+      </div>
+
       <div class="summary-table">
         <!-- Unified Header -->
         <div class="summary-header header-row">
@@ -162,7 +172,7 @@ const getSectorColor = (status) => {
             <div class="col-pos">POS</div>
             <div class="col-driver">DRIVER / TEAM</div>
           </div>
-          <div class="col-scrollable header-cell">
+          <div class="col-scrollable header-cell" v-if="year >= 2018">
             LAPS IN {{ selectedPhase }}
           </div>
         </div>
@@ -187,7 +197,7 @@ const getSectorColor = (status) => {
             </div>
           </div>
 
-          <div class="col-scrollable row-cell">
+          <div class="col-scrollable row-cell" v-if="year >= 2018">
             <div class="laps-row">
               <template v-for="stint in driver.stints" :key="stint.run_number">
                 <template v-for="lap in stint.laps" :key="lap.lap_number">
@@ -305,6 +315,14 @@ const getSectorColor = (status) => {
 .summary-scroll-area {
   overflow-x: auto;
   width: 100%;
+}
+
+.historical-note {
+  padding: 1rem 1.5rem;
+  background: var(--accent-color);
+  color: var(--primary-color);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .summary-table {

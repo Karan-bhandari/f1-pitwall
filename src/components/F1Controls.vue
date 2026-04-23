@@ -70,7 +70,7 @@ defineEmits([
 
   <p v-if="isLoadingSessions" class="loading-text">Loading sessions...</p>
   <p v-if="sessionsError" class="error-text">{{ sessionsError }}</p>
-  <div v-if="!isLoadingSessions && sessions.length > 0" class="form-group">
+  <div v-if="!isLoadingSessions && sessions.length > 1" class="form-group">
     <label for="session-select">Session:</label>
     <select
       id="session-select"
@@ -100,6 +100,7 @@ defineEmits([
       }}
     </button>
     <button
+      v-if="Number(year) >= 2018"
       class="view-btn"
       :class="{ selected: viewMode === 'comparison' }"
       @click="$emit('update:viewMode', 'comparison')"

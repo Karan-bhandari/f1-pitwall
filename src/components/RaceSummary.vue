@@ -14,6 +14,11 @@ const props = defineProps({
     type: String,
     default: null,
   },
+  year: {
+    type: Number,
+    required: false,
+    default: 2024,
+  },
 });
 
 const getTyreColor = (compound) => {
@@ -86,9 +91,13 @@ const calculatePosition = (startLap, lapCount = 1) => {
         <p>No performance data available for this session.</p>
       </div>
       <template v-else>
+        <div v-if="year < 2018" class="historical-note">
+          <p>Note: Detailed lap and strategy data is not available for this era.</p>
+        </div>
+
         <!-- Track Status Header Row -->
         <div
-          v-if="summaryData.track_status_events?.length"
+          v-if="summaryData.track_status_events?.length && year >= 2018"
           class="track-status-row"
         >
           <div class="col-pos"></div>
@@ -120,7 +129,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
         <div class="summary-header">
           <div class="col-pos">POS</div>
           <div class="col-driver">DRIVER</div>
-          <div class="col-stints">TYRE STRATEGY (LAPS PER STINT)</div>
+          <div class="col-stints" v-if="year >= 2018">TYRE STRATEGY (LAPS PER STINT)</div>
         </div>
 
         <div
@@ -141,7 +150,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
             </div>
           </div>
 
-          <div class="col-stints">
+          <div class="col-stints" v-if="year >= 2018">
             <div class="stint-timeline">
               <div
                 v-for="(stint, index) in driver.stints"
@@ -181,6 +190,14 @@ const calculatePosition = (startLap, lapCount = 1) => {
 .summary-content {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.historical-note {
+  padding: 1rem 1.5rem;
+  background: var(--accent-color);
+  color: var(--primary-color);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .summary-header {

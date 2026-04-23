@@ -319,11 +319,18 @@ watch(
 
 <template>
   <div>
-    <p v-if="isLoading" class="loading-text">Loading telemetry data...</p>
-    <p v-if="error" class="error-text">{{ error }}</p>
+    <div v-if="year < 2018" class="no-telemetry-state">
+      <h3>⚠️ TELEMETRY NOT AVAILABLE</h3>
+      <p>High-resolution telemetry data is only available for seasons from 2018 onwards.</p>
+      <p>Please select a modern season to view speed, throttle, and braking traces.</p>
+    </div>
 
-    <div
-      v-if="telemetryData"
+    <template v-else>
+      <p v-if="isLoading" class="loading-text">Loading telemetry data...</p>
+      <p v-if="error" class="error-text">{{ error }}</p>
+
+      <div
+        v-if="telemetryData"
       class="telemetry-container"
       :style="{ height: hasDRS ? '1800px' : '1500px' }"
     >
@@ -336,10 +343,29 @@ watch(
         <canvas id="drs-chart"></canvas>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
+.no-telemetry-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--item-bg-color);
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+  margin-top: 1rem;
+}
+.no-telemetry-state h3 {
+  margin-top: 0;
+  border: none;
+  justify-content: center;
+  display: flex;
+}
+.no-telemetry-state p {
+  color: var(--muted-text-color);
+  margin: 0.5rem 0;
+}
 .loading-text,
 .error-text {
   text-align: center;

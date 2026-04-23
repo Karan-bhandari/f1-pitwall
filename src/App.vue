@@ -25,7 +25,7 @@ const toggleTheme = () => {
 const year = ref(new Date().getFullYear());
 const currentYear = new Date().getFullYear();
 const years = Array.from(
-  { length: currentYear - 2018 + 1 },
+  { length: currentYear - 1950 + 1 },
   (_, i) => currentYear - i,
 );
 const events = ref([]);
@@ -387,6 +387,7 @@ onMounted(() => {
         :isLoading="isLoadingSummary"
         :error="summaryError"
         :theme="theme"
+        :year="Number(year)"
         @select-lap="handleQuickLapSelect"
       />
       <RaceSummary
@@ -394,6 +395,7 @@ onMounted(() => {
         :summaryData="summaryData"
         :isLoading="isLoadingSummary"
         :error="summaryError"
+        :year="Number(year)"
       />
     </template>
   </div>

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import fastf1
 import pandas as pd
-from ..utils import validate_year, error_response
+from ..utils import validate_year, error_response, get_historical_team_color
 
 schedule_bp = Blueprint("schedule", __name__)
 
@@ -67,6 +67,11 @@ def get_sessions():
             "Qualifying",
             "Race",
         ]
+        
+        if year < 2018:
+            # For pre-2018, we only provide the Weekend Recap, 
+            # so we don't expose individual sessions in the dropdown.
+            session_types = []
 
         for session_type in session_types:
             try:
@@ -106,6 +111,34 @@ def get_drivers():
         )
 
     try:
+        if year < 2018:
+            ergast = fastf1.ergast.Ergast()
+            event = fastf1.get_event(year, event_key)
+            event_round = int(event["RoundNumber"])
+            
+            is_quali = any(k in session_name.lower() for k in ["qualifying", "shootout", "qualy"])
+            if is_quali:
+                res = ergast.get_qualifying_results(season=year, round=event_round)
+            else:
+                res = ergast.get_race_results(season=year, round=event_round)
+                
+            drivers = []
+            if res.content and not res.content[0].empty:
+                df = res.content[0]
+                for idx, driver_info in df.iterrows():
+                    abbrev = str(driver_info.get("driverCode")) if pd.notna(driver_info.get("driverCode")) else str(driver_info.get("familyName", "??"))[:3].upper()
+                    drivers.append({
+                        "driver_number": str(driver_info.get("number", "??")),
+                        "abbreviation": abbrev,
+                        "full_name": f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')}".strip(),
+                        "team": str(driver_info.get("constructorName", "Unknown")),
+                        "team_id": str(driver_info.get("constructorId", "")),
+                        "team_color": get_historical_team_color(driver_info.get("constructorId")),
+                        "display_name": f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')} ({abbrev})".strip(),
+                        "driver_key": abbrev,
+                    })
+            return jsonify({"drivers": drivers}), 200
+
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
 

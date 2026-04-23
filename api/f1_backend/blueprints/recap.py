@@ -4,9 +4,109 @@ import pandas as pd
 import numpy as np
 import sys
 import traceback
-from ..utils import validate_year, error_response, format_timedelta
+from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color
 
 recap_bp = Blueprint("recap", __name__)
+
+def _get_historical_weekend_summary(year, event, event_name):
+    ergast = fastf1.ergast.Ergast()
+    event_round = int(event["RoundNumber"])
+    sessions_data = {}
+    
+    def safe_format_td(val):
+        if pd.isna(val):
+            return "-"
+        if hasattr(val, "total_seconds"):
+            return format_timedelta(val)
+        return str(val)
+
+    # Race
+    try:
+        race_res = ergast.get_race_results(season=year, round=event_round)
+        if race_res.content and not race_res.content[0].empty:
+            df = race_res.content[0]
+            summary = {
+                "session_name": "Race",
+                "session_index": 5,
+                "session_date": None,
+                "results": [],
+                "insights": {"track": {"weather": "N/A", "air_temp": None, "track_temp": None}, "incidents": []}
+            }
+            podium = []
+            for idx, driver in df.iterrows():
+                pos = int(driver.get("position", idx + 1))
+                abbrev = str(driver.get("driverCode")) if pd.notna(driver.get("driverCode")) else str(driver.get("familyName", "??"))[:3].upper()
+                entry = {
+                    "pos": pos,
+                    "driver_number": str(driver.get("number", "??")),
+                    "abbreviation": abbrev,
+                    "full_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
+                    "team_name": str(driver.get("constructorName", "Unknown")),
+                    "team_color": get_historical_team_color(driver.get("constructorId")),
+                    "status": str(driver.get("status", "Finished")),
+                    "points": int(float(driver.get("points", 0))) if pd.notna(driver.get("points")) else 0,
+                    "grid_pos": int(driver.get("grid", 0)) if pd.notna(driver.get("grid")) else None,
+                    "best_time": None
+                }
+                summary["results"].append(entry)
+                if pos <= 3:
+                    podium.append({
+                        "pos": pos,
+                        "abbreviation": entry["abbreviation"],
+                        "team": entry["team_name"],
+                        "color": entry["team_color"]
+                    })
+            summary["insights"]["podium"] = podium
+            sessions_data["race"] = summary
+    except Exception as e:
+        print(f"[RECAP] Error fetching historical race: {e}", file=sys.stderr)
+        
+    # Qualifying
+    try:
+        quali_res = ergast.get_qualifying_results(season=year, round=event_round)
+        if quali_res.content and not quali_res.content[0].empty:
+            df = quali_res.content[0]
+            summary = {
+                "session_name": "Qualifying",
+                "session_index": 4,
+                "session_date": None,
+                "results": [],
+                "insights": {"track": {"weather": "N/A", "air_temp": None, "track_temp": None}, "incidents": []}
+            }
+            if not df.empty:
+                q_best = df.iloc[0].get("Q3")
+                if pd.isna(q_best) and "Q2" in df.columns: q_best = df.iloc[0].get("Q2")
+                if pd.isna(q_best) and "Q1" in df.columns: q_best = df.iloc[0].get("Q1")
+                summary["insights"]["pole"] = {
+                    "full_name": f"{df.iloc[0].get('givenName', '')} {df.iloc[0].get('familyName', '')}".strip(),
+                    "time": safe_format_td(q_best)
+                }
+            for idx, driver in df.iterrows():
+                pos = int(driver.get("position", idx + 1))
+                abbrev = str(driver.get("driverCode")) if pd.notna(driver.get("driverCode")) else str(driver.get("familyName", "??"))[:3].upper()
+                q_best = driver.get("Q3") if "Q3" in df.columns else None
+                if pd.isna(q_best) and "Q2" in df.columns: q_best = driver.get("Q2")
+                if pd.isna(q_best) and "Q1" in df.columns: q_best = driver.get("Q1")
+                entry = {
+                    "pos": pos,
+                    "driver_number": str(driver.get("number", "??")),
+                    "abbreviation": abbrev,
+                    "full_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
+                    "team_name": str(driver.get("constructorName", "Unknown")),
+                    "team_color": get_historical_team_color(driver.get("constructorId")),
+                    "status": "Finished",
+                    "q1": safe_format_td(driver.get("Q1")) if "Q1" in df.columns else "-",
+                    "q2": safe_format_td(driver.get("Q2")) if "Q2" in df.columns else "-",
+                    "q3": safe_format_td(driver.get("Q3")) if "Q3" in df.columns else "-",
+                    "best_time": safe_format_td(q_best)
+                }
+                summary["results"].append(entry)
+            sessions_data["qualifying"] = summary
+    except Exception as e:
+        print(f"[RECAP] Error fetching historical quali: {e}", file=sys.stderr)
+        
+    sorted_sessions = sorted(sessions_data.values(), key=lambda x: x["session_index"])
+    return jsonify({"event_name": event_name, "year": year, "sessions": sorted_sessions}), 200
 
 
 def _get_track_status_incidents(session):
@@ -189,6 +289,10 @@ def get_weekend_summary():
     try:
         event = fastf1.get_event(year, event_key)
         event_name = str(event["EventName"])
+        
+        if year < 2018:
+            return _get_historical_weekend_summary(year, event, event_name)
+            
         sessions_data = {}
 
         for i in range(1, 6):

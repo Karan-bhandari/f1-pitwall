@@ -5,7 +5,7 @@ import numpy as np
 import sys
 import traceback
 from datetime import datetime
-from ..utils import validate_year, error_response, format_timedelta
+from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color
 
 telemetry_bp = Blueprint("telemetry", __name__)
 
@@ -129,6 +129,9 @@ def get_race_comparison():
         )
 
     try:
+        if year < 2018:
+            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
 
@@ -192,6 +195,9 @@ def get_laps():
         return error_response("All parameters are required.")
 
     try:
+        if year < 2018:
+            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
 
@@ -404,6 +410,9 @@ def get_fastest_lap():
         )
 
     try:
+        if year < 2018:
+            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+
         session = fastf1.get_session(year, event_key, session_name)
         # Use telemetry if available
         use_telemetry = year >= 2018
@@ -560,6 +569,34 @@ def get_race_summary():
         return error_response("Missing parameters are required.")
 
     try:
+        if year < 2018:
+            ergast = fastf1.ergast.Ergast()
+            event = fastf1.get_event(year, event_key)
+            event_round = int(event["RoundNumber"])
+            summary_data = []
+            is_quali = any(k in session_name.lower() for k in ["qualifying", "shootout", "qualy"])
+            
+            if is_quali:
+                res = ergast.get_qualifying_results(season=year, round=event_round)
+            else:
+                res = ergast.get_race_results(season=year, round=event_round)
+                
+            if res.content and not res.content[0].empty:
+                df = res.content[0]
+                for idx, driver in df.iterrows():
+                    pos = int(driver.get("position", idx + 1))
+                    abbrev = str(driver.get("driverCode")) if pd.notna(driver.get("driverCode")) else str(driver.get("familyName", "??"))[:3].upper()
+                    entry = {
+                        "driver_number": str(driver.get("number", "??")),
+                        "abbreviation": abbrev,
+                        "full_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
+                        "team_name": str(driver.get("constructorName", "Unknown")),
+                        "team_color": get_historical_team_color(driver.get("constructorId")),
+                        "position": pos,
+                    }
+                    summary_data.append(entry)
+            return jsonify({"results": summary_data, "total_laps": 0, "available_phases": [], "track_status_events": []}), 200
+
         session = fastf1.get_session(year, event_key, session_name)
 
         # Check if it's any qualifying type session (Qualifying, Shootout, Qualy)
