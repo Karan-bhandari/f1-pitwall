@@ -52,8 +52,6 @@ watch(
   { immediate: true },
 );
 
-
-
 const getBestTimeInPhase = (driver, phase) => {
   let best = Infinity;
   if (!driver.stints) return null;
@@ -141,7 +139,10 @@ const getSectorColorForTheme = (status) => {
 
     <div v-else-if="summaryData" class="summary-scroll-area">
       <div v-if="year < 2018" class="historical-note">
-        <p>Note: Detailed lap data is not available for this era. See Weekend Recap for classification.</p>
+        <p>
+          Note: Detailed lap data is not available for this era. See Weekend
+          Recap for classification.
+        </p>
       </div>
 
       <div class="summary-table">
@@ -212,7 +213,9 @@ const getSectorColorForTheme = (status) => {
                         <span
                           class="s-val"
                           :style="{
-                            color: getSectorColorForTheme(lap.sectors.s1.status),
+                            color: getSectorColorForTheme(
+                              lap.sectors.s1.status,
+                            ),
                           }"
                           >{{ lap.sectors.s1.time?.toFixed(3) || "--" }}</span
                         >
@@ -222,7 +225,9 @@ const getSectorColorForTheme = (status) => {
                         <span
                           class="s-val"
                           :style="{
-                            color: getSectorColorForTheme(lap.sectors.s2.status),
+                            color: getSectorColorForTheme(
+                              lap.sectors.s2.status,
+                            ),
                           }"
                           >{{ lap.sectors.s2.time?.toFixed(3) || "--" }}</span
                         >
@@ -232,7 +237,9 @@ const getSectorColorForTheme = (status) => {
                         <span
                           class="s-val"
                           :style="{
-                            color: getSectorColorForTheme(lap.sectors.s3.status),
+                            color: getSectorColorForTheme(
+                              lap.sectors.s3.status,
+                            ),
                           }"
                           >{{ lap.sectors.s3.time?.toFixed(3) || "--" }}</span
                         >

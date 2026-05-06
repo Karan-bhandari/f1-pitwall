@@ -2,13 +2,23 @@ from flask import jsonify
 from datetime import datetime
 import pandas as pd
 
-
 HISTORICAL_TEAM_COLORS = {
-    "mclaren": "FF8700",
-    "williams": "005AFF",
-    "ferrari": "DC0000",
-    "mercedes": "00D2BE",
-    "red_bull": "0600EF",
+    # --- Modern Grid (2018+) ---
+    "mercedes": "27F4D2",
+    "ferrari": "E8002D",
+    "red_bull": "3671C6",
+    "mclaren": "FF8000",
+    "aston_martin": "229971",
+    "alpine": "0093CC",
+    "williams": "64C4FF",
+    "rb": "6692FF",
+    "haas": "B6BABD",
+    "audi": "FF0000",
+    "cadillac": "FFD700",
+    "alfa": "C92D4B",
+    "alphatauri": "4E7C9B",
+    "racing_point": "F596C8",
+    # --- Classic / Historical ---
     "benetton": "008855",
     "renault": "FFF500",
     "tyrrell": "001A4C",
@@ -21,7 +31,7 @@ HISTORICAL_TEAM_COLORS = {
     "minardi": "FFCC00",
     "ligier": "005AFF",
     "arrows": "FF6600",
-    "sauber": "006EFF",
+    "sauber": "52E252",
     "brm": "004225",
     "cooper": "004225",
     "honda": "CC0000",
@@ -30,8 +40,6 @@ HISTORICAL_TEAM_COLORS = {
     "brawn": "B8FD3F",
     "toro_rosso": "0000FF",
     "force_india": "F596C8",
-    "aston_martin": "006F62",
-    "alfa": "900000",
     "maserati": "CC0000",
     "matra": "005AFF",
     "march": "001A4C",
@@ -42,11 +50,11 @@ HISTORICAL_TEAM_COLORS = {
     "prost": "0000FF",
 }
 
+
 def get_historical_team_color(constructor_id):
     if not constructor_id or pd.isna(constructor_id):
         return "777777"
     return HISTORICAL_TEAM_COLORS.get(str(constructor_id).lower().strip(), "777777")
-
 
 
 def validate_year(year):

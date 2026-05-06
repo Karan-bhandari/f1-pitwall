@@ -70,7 +70,9 @@ const calculatePosition = (startLap, lapCount = 1) => {
       </div>
       <template v-else>
         <div v-if="year < 2018" class="historical-note">
-          <p>Note: Detailed lap and strategy data is not available for this era.</p>
+          <p>
+            Note: Detailed lap and strategy data is not available for this era.
+          </p>
         </div>
 
         <!-- Track Status Header Row -->
@@ -107,7 +109,9 @@ const calculatePosition = (startLap, lapCount = 1) => {
         <div class="summary-header">
           <div class="col-pos">POS</div>
           <div class="col-driver">DRIVER</div>
-          <div class="col-stints" v-if="year >= 2018">TYRE STRATEGY (LAPS PER STINT)</div>
+          <div class="col-stints" v-if="year >= 2018">
+            TYRE STRATEGY (LAPS PER STINT)
+          </div>
         </div>
 
         <div

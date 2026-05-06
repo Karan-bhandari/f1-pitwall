@@ -12,8 +12,6 @@ const props = defineProps({
 
 let chartInstance = null;
 
-
-
 const renderChart = (data) => {
   const ctx = document.getElementById("lap-time-chart-canvas");
   if (!ctx) return;
@@ -298,8 +296,6 @@ const renderChart = (data) => {
     },
   });
 };
-
-
 
 watch(
   () => props.raceComparison,

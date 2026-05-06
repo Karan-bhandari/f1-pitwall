@@ -1,7 +1,12 @@
 from flask import Blueprint, request, jsonify
 import fastf1
 import pandas as pd
-from ..utils import validate_year, error_response, get_historical_team_color, format_ergast_driver
+from ..utils import (
+    validate_year,
+    error_response,
+    get_historical_team_color,
+    format_ergast_driver,
+)
 
 schedule_bp = Blueprint("schedule", __name__)
 
@@ -67,9 +72,9 @@ def get_sessions():
             "Qualifying",
             "Race",
         ]
-        
+
         if year < 2018:
-            # For pre-2018, we only provide the Weekend Recap, 
+            # For pre-2018, we only provide the Weekend Recap,
             # so we don't expose individual sessions in the dropdown.
             session_types = []
 
@@ -115,20 +120,24 @@ def get_drivers():
             ergast = fastf1.ergast.Ergast()
             event = fastf1.get_event(year, event_key)
             event_round = int(event["RoundNumber"])
-            
-            is_quali = any(k in session_name.lower() for k in ["qualifying", "shootout", "qualy"])
+
+            is_quali = any(
+                k in session_name.lower() for k in ["qualifying", "shootout", "qualy"]
+            )
             if is_quali:
                 res = ergast.get_qualifying_results(season=year, round=event_round)
             else:
                 res = ergast.get_race_results(season=year, round=event_round)
-                
+
             drivers = []
             if res.content and not res.content[0].empty:
                 df = res.content[0]
                 for idx, driver_info in df.iterrows():
                     base = format_ergast_driver(driver_info)
                     base["team"] = base.pop("team_name")
-                    base["display_name"] = f"{base['full_name']} ({base['abbreviation']})"
+                    base["display_name"] = (
+                        f"{base['full_name']} ({base['abbreviation']})"
+                    )
                     base["driver_key"] = base["abbreviation"]
                     drivers.append(base)
             return jsonify({"drivers": drivers}), 200

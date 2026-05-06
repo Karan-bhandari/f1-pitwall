@@ -152,3 +152,16 @@ export async function getWeekendSummary(year, eventKey) {
       : CACHE_DURATION_HOURS;
   return await fetchAndCache(url, cacheHours);
 }
+
+/**
+ * Gets the driver and constructor championship standings for a given season.
+ */
+export async function getStandings(year) {
+  if (!year) return null;
+  const url = `${API_BASE_URL}/standings?year=${year}`;
+  const cacheHours =
+    year < new Date().getFullYear()
+      ? ETERNAL_CACHE_HOURS
+      : CACHE_DURATION_HOURS;
+  return await fetchAndCache(url, cacheHours);
+}

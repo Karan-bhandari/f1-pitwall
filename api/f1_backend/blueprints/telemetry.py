@@ -5,7 +5,13 @@ import numpy as np
 import sys
 import traceback
 from datetime import datetime
-from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color, format_ergast_driver
+from ..utils import (
+    validate_year,
+    error_response,
+    format_timedelta,
+    get_historical_team_color,
+    format_ergast_driver,
+)
 
 telemetry_bp = Blueprint("telemetry", __name__)
 
@@ -130,7 +136,10 @@ def get_race_comparison():
 
     try:
         if year < 2018:
-            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+            return error_response(
+                "High-resolution telemetry is not available for seasons before 2018.",
+                400,
+            )
 
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
@@ -196,7 +205,10 @@ def get_laps():
 
     try:
         if year < 2018:
-            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+            return error_response(
+                "High-resolution telemetry is not available for seasons before 2018.",
+                400,
+            )
 
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
@@ -411,7 +423,10 @@ def get_fastest_lap():
 
     try:
         if year < 2018:
-            return error_response("High-resolution telemetry is not available for seasons before 2018.", 400)
+            return error_response(
+                "High-resolution telemetry is not available for seasons before 2018.",
+                400,
+            )
 
         session = fastf1.get_session(year, event_key, session_name)
         # Use telemetry if available
@@ -566,7 +581,9 @@ def get_race_summary():
     session_name = request.args.get("session_name", type=str)
 
     if not all([year, event_key, session_name]):
-        return error_response("Year, event_key, and session_name parameters are required.")
+        return error_response(
+            "Year, event_key, and session_name parameters are required."
+        )
 
     try:
         if year < 2018:
@@ -574,13 +591,15 @@ def get_race_summary():
             event = fastf1.get_event(year, event_key)
             event_round = int(event["RoundNumber"])
             summary_data = []
-            is_quali = any(k in session_name.lower() for k in ["qualifying", "shootout", "qualy"])
-            
+            is_quali = any(
+                k in session_name.lower() for k in ["qualifying", "shootout", "qualy"]
+            )
+
             if is_quali:
                 res = ergast.get_qualifying_results(season=year, round=event_round)
             else:
                 res = ergast.get_race_results(season=year, round=event_round)
-                
+
             if res.content and not res.content[0].empty:
                 df = res.content[0]
                 for idx, driver in df.iterrows():
@@ -588,7 +607,17 @@ def get_race_summary():
                     base = format_ergast_driver(driver)
                     entry = {**base, "position": pos}
                     summary_data.append(entry)
-            return jsonify({"results": summary_data, "total_laps": 0, "available_phases": [], "track_status_events": []}), 200
+            return (
+                jsonify(
+                    {
+                        "results": summary_data,
+                        "total_laps": 0,
+                        "available_phases": [],
+                        "track_status_events": [],
+                    }
+                ),
+                200,
+            )
 
         session = fastf1.get_session(year, event_key, session_name)
 

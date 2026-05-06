@@ -76,8 +76,6 @@ const isPracticeType = (name) => {
   const n = (name || "").toLowerCase();
   return n.includes("practice") || n.includes("fp");
 };
-
-
 </script>
 
 <template>
@@ -96,7 +94,9 @@ const isPracticeType = (name) => {
       <header class="recap-header">
         <h1>
           {{ recapData.event_name }} Recap
-          <span v-if="props.year < 2018" class="badge no-telemetry">NO TELEMETRY</span>
+          <span v-if="props.year < 2018" class="badge no-telemetry"
+            >NO TELEMETRY</span
+          >
         </h1>
         <div class="header-meta">
           <span>{{ props.year }} Season</span>
@@ -262,7 +262,10 @@ const isPracticeType = (name) => {
                 activeSession.insights.speed_king.abbreviation
               }}</span>
               <span class="value-highlight"
-                >{{ activeSession.insights.speed_king.value.toFixed(1) }} km/h</span
+                >{{
+                  activeSession.insights.speed_king.value.toFixed(1)
+                }}
+                km/h</span
               >
             </div>
           </div>
@@ -273,7 +276,10 @@ const isPracticeType = (name) => {
           >
             <h4>Sector Kings</h4>
             <div class="sector-grid">
-              <template v-for="(king, sector) in activeSession.insights.sector_kings" :key="sector">
+              <template
+                v-for="(king, sector) in activeSession.insights.sector_kings"
+                :key="sector"
+              >
                 <span class="sector-label">{{ sector.toUpperCase() }}</span>
                 <span class="sector-driver">{{ king.abbreviation }}</span>
                 <span class="sector-time">{{ king.time }}</span>

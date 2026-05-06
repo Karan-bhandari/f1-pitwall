@@ -4,15 +4,22 @@ import pandas as pd
 import numpy as np
 import sys
 import traceback
-from ..utils import validate_year, error_response, format_timedelta, get_historical_team_color, format_ergast_driver
+from ..utils import (
+    validate_year,
+    error_response,
+    format_timedelta,
+    get_historical_team_color,
+    format_ergast_driver,
+)
 
 recap_bp = Blueprint("recap", __name__)
+
 
 def _get_historical_weekend_summary(year, event, event_name):
     ergast = fastf1.ergast.Ergast()
     event_round = int(event["RoundNumber"])
     sessions_data = {}
-    
+
     def safe_format_td(val):
         if pd.isna(val):
             return "-"
@@ -30,7 +37,10 @@ def _get_historical_weekend_summary(year, event, event_name):
                 "session_index": 5,
                 "session_date": None,
                 "results": [],
-                "insights": {"track": {"weather": "N/A", "air_temp": None, "track_temp": None}, "incidents": []}
+                "insights": {
+                    "track": {"weather": "N/A", "air_temp": None, "track_temp": None},
+                    "incidents": [],
+                },
             }
             podium = []
             for idx, driver in df.iterrows():
@@ -40,23 +50,33 @@ def _get_historical_weekend_summary(year, event, event_name):
                     **base,
                     "pos": pos,
                     "status": str(driver.get("status", "Finished")),
-                    "points": int(float(driver.get("points", 0))) if pd.notna(driver.get("points")) else 0,
-                    "grid_pos": int(driver.get("grid", 0)) if pd.notna(driver.get("grid")) else None,
-                    "best_time": None
+                    "points": (
+                        int(float(driver.get("points", 0)))
+                        if pd.notna(driver.get("points"))
+                        else 0
+                    ),
+                    "grid_pos": (
+                        int(driver.get("grid", 0))
+                        if pd.notna(driver.get("grid"))
+                        else None
+                    ),
+                    "best_time": None,
                 }
                 summary["results"].append(entry)
                 if pos <= 3:
-                    podium.append({
-                        "pos": pos,
-                        "abbreviation": entry["abbreviation"],
-                        "team": entry["team_name"],
-                        "color": entry["team_color"]
-                    })
+                    podium.append(
+                        {
+                            "pos": pos,
+                            "abbreviation": entry["abbreviation"],
+                            "team": entry["team_name"],
+                            "color": entry["team_color"],
+                        }
+                    )
             summary["insights"]["podium"] = podium
             sessions_data["race"] = summary
     except Exception as e:
         print(f"[RECAP] Error fetching historical race: {e}", file=sys.stderr)
-        
+
     # Qualifying
     try:
         quali_res = ergast.get_qualifying_results(season=year, round=event_round)
@@ -67,38 +87,54 @@ def _get_historical_weekend_summary(year, event, event_name):
                 "session_index": 4,
                 "session_date": None,
                 "results": [],
-                "insights": {"track": {"weather": "N/A", "air_temp": None, "track_temp": None}, "incidents": []}
+                "insights": {
+                    "track": {"weather": "N/A", "air_temp": None, "track_temp": None},
+                    "incidents": [],
+                },
             }
             if not df.empty:
                 q_best = df.iloc[0].get("Q3")
-                if pd.isna(q_best) and "Q2" in df.columns: q_best = df.iloc[0].get("Q2")
-                if pd.isna(q_best) and "Q1" in df.columns: q_best = df.iloc[0].get("Q1")
+                if pd.isna(q_best) and "Q2" in df.columns:
+                    q_best = df.iloc[0].get("Q2")
+                if pd.isna(q_best) and "Q1" in df.columns:
+                    q_best = df.iloc[0].get("Q1")
                 summary["insights"]["pole"] = {
                     "full_name": f"{df.iloc[0].get('givenName', '')} {df.iloc[0].get('familyName', '')}".strip(),
-                    "time": safe_format_td(q_best)
+                    "time": safe_format_td(q_best),
                 }
             for idx, driver in df.iterrows():
                 pos = int(driver.get("position", idx + 1))
                 q_best = driver.get("Q3") if "Q3" in df.columns else None
-                if pd.isna(q_best) and "Q2" in df.columns: q_best = driver.get("Q2")
-                if pd.isna(q_best) and "Q1" in df.columns: q_best = driver.get("Q1")
+                if pd.isna(q_best) and "Q2" in df.columns:
+                    q_best = driver.get("Q2")
+                if pd.isna(q_best) and "Q1" in df.columns:
+                    q_best = driver.get("Q1")
                 base = format_ergast_driver(driver)
                 entry = {
                     **base,
                     "pos": pos,
                     "status": "Finished",
-                    "q1": safe_format_td(driver.get("Q1")) if "Q1" in df.columns else "-",
-                    "q2": safe_format_td(driver.get("Q2")) if "Q2" in df.columns else "-",
-                    "q3": safe_format_td(driver.get("Q3")) if "Q3" in df.columns else "-",
-                    "best_time": safe_format_td(q_best)
+                    "q1": (
+                        safe_format_td(driver.get("Q1")) if "Q1" in df.columns else "-"
+                    ),
+                    "q2": (
+                        safe_format_td(driver.get("Q2")) if "Q2" in df.columns else "-"
+                    ),
+                    "q3": (
+                        safe_format_td(driver.get("Q3")) if "Q3" in df.columns else "-"
+                    ),
+                    "best_time": safe_format_td(q_best),
                 }
                 summary["results"].append(entry)
             sessions_data["qualifying"] = summary
     except Exception as e:
         print(f"[RECAP] Error fetching historical quali: {e}", file=sys.stderr)
-        
+
     sorted_sessions = sorted(sessions_data.values(), key=lambda x: x["session_index"])
-    return jsonify({"event_name": event_name, "year": year, "sessions": sorted_sessions}), 200
+    return (
+        jsonify({"event_name": event_name, "year": year, "sessions": sorted_sessions}),
+        200,
+    )
 
 
 def _get_track_status_incidents(session):
@@ -179,7 +215,10 @@ def _extract_session_insights(session, results, s_name):
                                 "value": float(speed_king["SpeedST"]),
                             }
             except Exception as sk_e:
-                print(f"[RECAP] Warning: Failed to extract practice speed king: {sk_e}", file=sys.stderr)
+                print(
+                    f"[RECAP] Warning: Failed to extract practice speed king: {sk_e}",
+                    file=sys.stderr,
+                )
 
         # Qualifying Highlights
         elif "qualifying" in lname or "shootout" in lname:
@@ -192,14 +231,18 @@ def _extract_session_insights(session, results, s_name):
             # Add Sector Kings
             try:
                 if hasattr(session, "laps") and not session.laps.empty:
-                    accurate_mask = session.laps["IsAccurate"].fillna(False).astype(bool)
+                    accurate_mask = (
+                        session.laps["IsAccurate"].fillna(False).astype(bool)
+                    )
                     laps = session.laps[accurate_mask]
                     if not laps.empty:
                         sector_kings = {}
                         for sector in ["Sector1Time", "Sector2Time", "Sector3Time"]:
                             valid_sector_laps = laps[laps[sector].notna()]
                             if not valid_sector_laps.empty:
-                                best_lap = valid_sector_laps.loc[valid_sector_laps[sector].idxmin()]
+                                best_lap = valid_sector_laps.loc[
+                                    valid_sector_laps[sector].idxmin()
+                                ]
                                 # Use short keys like S1, S2, S3 for cleaner UI labels
                                 s_key = sector.replace("ector", "").replace("Time", "")
                                 sector_kings[s_key] = {
@@ -208,7 +251,10 @@ def _extract_session_insights(session, results, s_name):
                                 }
                         insights["sector_kings"] = sector_kings
             except Exception as sk_e:
-                print(f"[RECAP] Warning: Failed to extract sector kings: {sk_e}", file=sys.stderr)
+                print(
+                    f"[RECAP] Warning: Failed to extract sector kings: {sk_e}",
+                    file=sys.stderr,
+                )
 
         # Race / Sprint Highlights
         else:
@@ -247,10 +293,12 @@ def _extract_session_insights(session, results, s_name):
                             stints = winner_laps.groupby("Stint")
                             strategy = []
                             for _, stint_laps in stints:
-                                strategy.append({
-                                    "compound": str(stint_laps["Compound"].iloc[0]),
-                                    "laps": int(len(stint_laps))
-                                })
+                                strategy.append(
+                                    {
+                                        "compound": str(stint_laps["Compound"].iloc[0]),
+                                        "laps": int(len(stint_laps)),
+                                    }
+                                )
                             insights["winning_strategy"] = strategy
 
             except Exception as fl_e:
@@ -281,10 +329,10 @@ def get_weekend_summary():
     try:
         event = fastf1.get_event(year, event_key)
         event_name = str(event["EventName"])
-        
+
         if year < 2018:
             return _get_historical_weekend_summary(year, event, event_name)
-            
+
         sessions_data = {}
 
         for i in range(1, 6):

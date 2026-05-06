@@ -6,6 +6,7 @@ import LapTimeChart from "./components/LapTimeChart.vue";
 import RaceSummary from "./components/RaceSummary.vue";
 import QualifyingSummary from "./components/QualifyingSummary.vue";
 import SessionRecap from "./components/SessionRecap.vue";
+import SeasonOverview from "./components/SeasonOverview.vue";
 import {
   getEvents,
   getSessions,
@@ -361,7 +362,11 @@ onMounted(() => {
       v-model:viewMode="viewMode"
     />
 
-    <template v-if="viewMode === 'recap'">
+    <!-- Season Overview: shown when no event is selected -->
+    <SeasonOverview v-if="!selectedEventKey" :year="Number(year)" />
+
+    <!-- Event-specific views: shown once an event is selected -->
+    <template v-else-if="viewMode === 'recap'">
       <SessionRecap :year="Number(year)" :eventKey="selectedEventKey" />
     </template>
 

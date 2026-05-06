@@ -326,8 +326,14 @@ onBeforeUnmount(() => {
   <div>
     <div v-if="year < 2018" class="no-telemetry-state">
       <h3>⚠️ TELEMETRY NOT AVAILABLE</h3>
-      <p>High-resolution telemetry data is only available for seasons from 2018 onwards.</p>
-      <p>Please select a modern season to view speed, throttle, and braking traces.</p>
+      <p>
+        High-resolution telemetry data is only available for seasons from 2018
+        onwards.
+      </p>
+      <p>
+        Please select a modern season to view speed, throttle, and braking
+        traces.
+      </p>
     </div>
 
     <template v-else>
@@ -336,18 +342,18 @@ onBeforeUnmount(() => {
 
       <div
         v-if="telemetryData"
-      class="telemetry-container"
-      :style="{ height: hasDRS ? '1800px' : '1500px' }"
-    >
-      <div class="chart-row"><canvas id="speed-chart"></canvas></div>
-      <div class="chart-row"><canvas id="throttle-chart"></canvas></div>
-      <div class="chart-row"><canvas id="brake-chart"></canvas></div>
-      <div class="chart-row"><canvas id="gear-chart"></canvas></div>
-      <div class="chart-row"><canvas id="rpm-chart"></canvas></div>
-      <div v-if="hasDRS" class="chart-row">
-        <canvas id="drs-chart"></canvas>
+        class="telemetry-container"
+        :style="{ height: hasDRS ? '1800px' : '1500px' }"
+      >
+        <div class="chart-row"><canvas id="speed-chart"></canvas></div>
+        <div class="chart-row"><canvas id="throttle-chart"></canvas></div>
+        <div class="chart-row"><canvas id="brake-chart"></canvas></div>
+        <div class="chart-row"><canvas id="gear-chart"></canvas></div>
+        <div class="chart-row"><canvas id="rpm-chart"></canvas></div>
+        <div v-if="hasDRS" class="chart-row">
+          <canvas id="drs-chart"></canvas>
+        </div>
       </div>
-    </div>
     </template>
   </div>
 </template>
