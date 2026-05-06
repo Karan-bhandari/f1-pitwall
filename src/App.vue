@@ -7,6 +7,7 @@ import RaceSummary from "./components/RaceSummary.vue";
 import QualifyingSummary from "./components/QualifyingSummary.vue";
 import SessionRecap from "./components/SessionRecap.vue";
 import SeasonOverview from "./components/SeasonOverview.vue";
+import { inject } from "@vercel/analytics";
 import {
   getEvents,
   getSessions,
@@ -327,6 +328,7 @@ onMounted(() => {
     theme.value = e.matches ? "dark" : "light";
   });
   document.documentElement.setAttribute("data-theme", theme.value);
+  inject();
   fetchEvents();
 });
 </script>
