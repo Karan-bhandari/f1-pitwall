@@ -128,16 +128,16 @@ const barWidth = (points, max) => {
             <span class="driver-name">{{ driver.driver_name }}</span>
             <span class="team-name">{{ driver.team_name }}</span>
           </div>
+          <div class="points-bar-track">
+            <div
+              class="points-bar"
+              :style="{
+                width: barWidth(driver.points, maxDriverPoints),
+                backgroundColor: '#' + driver.team_color,
+              }"
+            ></div>
+          </div>
           <div class="points-area">
-            <div class="points-bar-container">
-              <div
-                class="points-bar"
-                :style="{
-                  width: barWidth(driver.points, maxDriverPoints),
-                  backgroundColor: '#' + driver.team_color,
-                }"
-              ></div>
-            </div>
             <span class="points-value">{{ driver.points }}</span>
             <span class="wins-badge" :class="{ empty: driver.wins <= 0 }">
               <template v-if="driver.wins > 0">{{ driver.wins }}W</template>
@@ -169,16 +169,16 @@ const barWidth = (points, max) => {
           <div class="driver-info">
             <span class="driver-code">{{ team.constructor_name }}</span>
           </div>
+          <div class="points-bar-track">
+            <div
+              class="points-bar"
+              :style="{
+                width: barWidth(team.points, maxConstructorPoints),
+                backgroundColor: '#' + team.team_color,
+              }"
+            ></div>
+          </div>
           <div class="points-area">
-            <div class="points-bar-container">
-              <div
-                class="points-bar"
-                :style="{
-                  width: barWidth(team.points, maxConstructorPoints),
-                  backgroundColor: '#' + team.team_color,
-                }"
-              ></div>
-            </div>
             <span class="points-value">{{ team.points }}</span>
             <span class="wins-badge" :class="{ empty: team.wins <= 0 }">
               <template v-if="team.wins > 0">{{ team.wins }}W</template>
@@ -397,16 +397,15 @@ const barWidth = (points, max) => {
   text-overflow: ellipsis;
 }
 
-/* Points area */
+/* Points area — just the number and wins badge */
 .points-area {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
-.points-bar-container {
+.points-bar-track {
   flex: 1;
   height: 6px;
   background: var(--border-color);
@@ -476,9 +475,23 @@ const barWidth = (points, max) => {
 
 /* Mobile */
 @media (max-width: 768px) {
+  .standing-row {
+    flex-wrap: wrap;
+    padding: 0.45rem 0.5rem;
+    gap: 0.25rem 0.35rem;
+  }
+
   .driver-info {
     width: auto;
-    flex-shrink: 1;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .driver-code {
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .driver-name,
@@ -486,16 +499,40 @@ const barWidth = (points, max) => {
     display: none;
   }
 
-  .driver-code {
-    font-size: 0.75rem;
+  /* Points area on same line as name, no bar */
+  .points-area {
+    flex: 0 0 auto;
+    gap: 0.3rem;
   }
 
-  .points-bar-container {
-    display: none;
+  /* Bar wraps to its own full-width row */
+  .points-bar-track {
+    flex-basis: 100%;
+    order: 10;
+    height: 4px;
+    margin-top: 0.1rem;
   }
 
-  .standing-row {
-    padding: 0.45rem 0.5rem;
+  .points-value {
+    font-size: 0.72rem;
+    min-width: 2.2rem;
+  }
+
+  .wins-badge {
+    font-size: 0.55rem;
+    min-width: 1.5rem;
+    padding: 0.05rem 0.25rem;
+  }
+
+  .pos {
+    min-width: 1.3rem;
+    height: 1.3rem;
+    font-size: 0.6rem;
+  }
+
+  .team-indicator {
+    height: 1.3rem;
+    width: 3px;
   }
 }
 </style>
