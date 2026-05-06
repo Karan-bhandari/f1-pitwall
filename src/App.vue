@@ -7,7 +7,7 @@ import RaceSummary from "./components/RaceSummary.vue";
 import QualifyingSummary from "./components/QualifyingSummary.vue";
 import SessionRecap from "./components/SessionRecap.vue";
 import SeasonOverview from "./components/SeasonOverview.vue";
-import { inject } from "@vercel/analytics";
+import { Analytics } from "@vercel/analytics/vue";
 import {
   getEvents,
   getSessions,
@@ -328,13 +328,13 @@ onMounted(() => {
     theme.value = e.matches ? "dark" : "light";
   });
   document.documentElement.setAttribute("data-theme", theme.value);
-  inject();
   fetchEvents();
 });
 </script>
 
 <template>
   <div id="app-container">
+    <Analytics />
     <button class="theme-toggle" @click="toggleTheme" title="Toggle Theme">
       {{ theme === "light" ? "🌙" : "☀️" }}
     </button>
