@@ -168,6 +168,18 @@ def _get_track_status_incidents(session):
     return incidents
 
 
+def _safe_get_laps(session):
+    """Safely access session.laps without triggering DataNotLoadedError."""
+    try:
+        # FastF1 3.x property access raises DataNotLoadedError if not loaded
+        laps = session.laps
+        if laps is not None and not laps.empty:
+            return laps
+    except Exception:
+        pass
+    return None
+
+
 def _extract_session_insights(session, results, s_name):
     """Helper to aggregate session-specific highlight data."""
     lname = s_name.lower()
@@ -191,9 +203,10 @@ def _extract_session_insights(session, results, s_name):
                     "abbreviation": str(mileage_king.get("Abbreviation", "N/A")),
                     "laps": int(mileage_king.get("NumberOfLaps", 0)),
                 }
-            elif hasattr(session, "laps") and not session.laps.empty:
+            elif _safe_get_laps(session) is not None:
                 # Fallback to calculating from raw laps
-                laps_count = session.laps.groupby("Driver").size()
+                laps = _safe_get_laps(session)
+                laps_count = laps.groupby("Driver").size()
                 if not laps_count.empty:
                     mileage_king_abbr = laps_count.idxmax()
                     insights["mileage_king"] = {
@@ -203,8 +216,8 @@ def _extract_session_insights(session, results, s_name):
 
             # Add Speed King (Top Speed in session)
             try:
-                if hasattr(session, "laps") and not session.laps.empty:
-                    laps = session.laps
+                laps = _safe_get_laps(session)
+                if laps is not None:
                     if "SpeedST" in laps.columns:
                         valid_speed_laps = laps[laps["SpeedST"].notna()]
                         if not valid_speed_laps.empty:
@@ -223,33 +236,46 @@ def _extract_session_insights(session, results, s_name):
         # Qualifying Highlights
         elif "qualifying" in lname or "shootout" in lname:
             if results is not None and not results.empty:
+                # Fallback for pole time: Q3 -> Q2 -> Q1 -> BestLapTime
+                pole_driver = results.iloc[0]
+                pole_time = pole_driver.get("Q3")
+                if pd.isna(pole_time):
+                    pole_time = pole_driver.get("Q2")
+                if pd.isna(pole_time):
+                    pole_time = pole_driver.get("Q1")
+                if pd.isna(pole_time):
+                    pole_time = pole_driver.get("BestLapTime")
+
                 insights["pole"] = {
-                    "full_name": str(results.iloc[0].get("FullName", "N/A")),
-                    "time": format_timedelta(results.iloc[0].get("BestLapTime")),
+                    "full_name": str(pole_driver.get("FullName", "N/A")),
+                    "time": format_timedelta(pole_time),
                 }
 
             # Add Sector Kings
             try:
-                if hasattr(session, "laps") and not session.laps.empty:
-                    accurate_mask = (
-                        session.laps["IsAccurate"].fillna(False).astype(bool)
-                    )
-                    laps = session.laps[accurate_mask]
+                laps = _safe_get_laps(session)
+                if laps is not None and "IsAccurate" in laps.columns:
+                    accurate_mask = laps["IsAccurate"].fillna(False).astype(bool)
+                    laps = laps[accurate_mask]
                     if not laps.empty:
                         sector_kings = {}
                         for sector in ["Sector1Time", "Sector2Time", "Sector3Time"]:
-                            valid_sector_laps = laps[laps[sector].notna()]
-                            if not valid_sector_laps.empty:
-                                best_lap = valid_sector_laps.loc[
-                                    valid_sector_laps[sector].idxmin()
-                                ]
-                                # Use short keys like S1, S2, S3 for cleaner UI labels
-                                s_key = sector.replace("ector", "").replace("Time", "")
-                                sector_kings[s_key] = {
-                                    "abbreviation": str(best_lap["Driver"]),
-                                    "time": format_timedelta(best_lap[sector]),
-                                }
-                        insights["sector_kings"] = sector_kings
+                            if sector in laps.columns:
+                                valid_sector_laps = laps[laps[sector].notna()]
+                                if not valid_sector_laps.empty:
+                                    best_lap = valid_sector_laps.loc[
+                                        valid_sector_laps[sector].idxmin()
+                                    ]
+                                    # Use short keys like S1, S2, S3 for cleaner UI labels
+                                    s_key = sector.replace("ector", "").replace(
+                                        "Time", ""
+                                    )
+                                    sector_kings[s_key] = {
+                                        "abbreviation": str(best_lap["Driver"]),
+                                        "time": format_timedelta(best_lap[sector]),
+                                    }
+                        if sector_kings:
+                            insights["sector_kings"] = sector_kings
             except Exception as sk_e:
                 print(
                     f"[RECAP] Warning: Failed to extract sector kings: {sk_e}",
@@ -277,8 +303,9 @@ def _extract_session_insights(session, results, s_name):
                 insights["podium"] = podium
 
             try:
-                if hasattr(session, "laps") and not session.laps.empty:
-                    fastest_lap = session.laps.pick_fastest()
+                laps = _safe_get_laps(session)
+                if laps is not None:
+                    fastest_lap = laps.pick_fastest()
                     if not fastest_lap.empty:
                         insights["fastest_lap"] = {
                             "abbreviation": str(fastest_lap["Driver"]),
@@ -286,20 +313,31 @@ def _extract_session_insights(session, results, s_name):
                         }
 
                     # Add Winning Strategy (Tyre sequence for P1)
-                    if results is not None and not results.empty:
+                    if (
+                        results is not None
+                        and not results.empty
+                        and "Abbreviation" in results.columns
+                    ):
                         winner_abbr = str(results.iloc[0]["Abbreviation"])
-                        winner_laps = session.laps.pick_drivers(winner_abbr)
-                        if not winner_laps.empty:
-                            stints = winner_laps.groupby("Stint")
-                            strategy = []
-                            for _, stint_laps in stints:
-                                strategy.append(
-                                    {
-                                        "compound": str(stint_laps["Compound"].iloc[0]),
-                                        "laps": int(len(stint_laps)),
-                                    }
-                                )
-                            insights["winning_strategy"] = strategy
+                        if "Driver" in laps.columns:
+                            winner_laps = laps.pick_drivers(winner_abbr)
+                            if (
+                                not winner_laps.empty
+                                and "Stint" in winner_laps.columns
+                                and "Compound" in winner_laps.columns
+                            ):
+                                stints = winner_laps.groupby("Stint")
+                                strategy = []
+                                for _, stint_laps in stints:
+                                    strategy.append(
+                                        {
+                                            "compound": str(
+                                                stint_laps["Compound"].iloc[0]
+                                            ),
+                                            "laps": int(len(stint_laps)),
+                                        }
+                                    )
+                                insights["winning_strategy"] = strategy
 
             except Exception as fl_e:
                 print(
@@ -355,7 +393,6 @@ def get_weekend_summary():
                 results = session.results
                 s_id = s_name.lower().replace(" ", "_")
                 lname = s_name.lower()
-
                 laps_fallback = {}
                 laps_count_fallback = {}
 
@@ -372,22 +409,17 @@ def get_weekend_summary():
                         )
                         has_results_data = has_best_time and has_laps
 
-                    if (
-                        not has_results_data
-                        and hasattr(session, "laps")
-                        and not session.laps.empty
-                    ):
+                    laps = _safe_get_laps(session)
+                    if not has_results_data and laps is not None:
                         print(
                             f"[RECAP] Practice results incomplete for {s_name}. Recovering from raw laps...",
                             file=sys.stderr,
                         )
-                        laps_with_times = session.laps[session.laps["LapTime"].notna()]
+                        laps_with_times = laps[laps["LapTime"].notna()]
                         laps_fallback = (
                             laps_with_times.groupby("Driver")["LapTime"].min().to_dict()
                         )
-                        laps_count_fallback = (
-                            session.laps.groupby("Driver").size().to_dict()
-                        )
+                        laps_count_fallback = laps.groupby("Driver").size().to_dict()
 
                 if (results is None or results.empty) and not laps_fallback:
                     print(
@@ -401,18 +433,57 @@ def get_weekend_summary():
                     "session_index": i,
                     "session_date": (
                         session.date.isoformat()
-                        if hasattr(session, "date") and session.date
+                        if hasattr(session, "date")
+                        and session.date
+                        and hasattr(session.date, "isoformat")
                         else None
                     ),
                     "results": [],
                     "insights": _extract_session_insights(session, results, s_name),
                 }
 
-                drivers_to_process = (
-                    results.iterrows()
-                    if results is not None and not results.empty
-                    else []
-                )
+                drivers_to_process = []
+                if results is not None and not results.empty:
+                    drivers_to_process = list(results.iterrows())
+                elif laps_fallback and laps is not None:
+                    # Construct pseudo-results from session.laps when results are missing
+                    # This occurs in ongoing/recent sessions where fastf1 has laps but no official results df.
+                    pseudo_results = []
+                    for abbr, b_time in laps_fallback.items():
+                        driver_laps = laps[laps["Driver"] == abbr]
+                        team_name = "Unknown"
+                        driver_num = "??"
+                        if not driver_laps.empty:
+                            if "Team" in driver_laps.columns:
+                                team_name = str(driver_laps["Team"].iloc[0])
+                            if "DriverNumber" in driver_laps.columns:
+                                driver_num = str(driver_laps["DriverNumber"].iloc[0])
+
+                        pseudo_results.append(
+                            {
+                                "Abbreviation": abbr,
+                                "DriverNumber": driver_num,
+                                "FullName": abbr,  # Best fallback without results
+                                "TeamName": team_name,
+                                "TeamColor": "777777",
+                                "Status": "Finished",
+                                "BestLapTime": b_time,
+                                "NumberOfLaps": laps_count_fallback.get(abbr, 0),
+                            }
+                        )
+
+                    # Sort by BestLapTime
+                    valid_times = [
+                        d for d in pseudo_results if pd.notna(d["BestLapTime"])
+                    ]
+                    missing_times = [
+                        d for d in pseudo_results if pd.isna(d["BestLapTime"])
+                    ]
+                    valid_times.sort(key=lambda x: x["BestLapTime"])
+                    pseudo_results = valid_times + missing_times
+
+                    # Format for downstream loop: (None, pd.Series)
+                    drivers_to_process = [(None, pd.Series(d)) for d in pseudo_results]
 
                 for idx, (_, driver) in enumerate(drivers_to_process):
                     entry_pos = idx + 1
@@ -448,14 +519,21 @@ def get_weekend_summary():
                             }
                         )
                     elif is_quali:
+                        # Fallback for best_time: Q3 -> Q2 -> Q1 -> BestLapTime
+                        q_best = driver.get("Q3")
+                        if pd.isna(q_best):
+                            q_best = driver.get("Q2")
+                        if pd.isna(q_best):
+                            q_best = driver.get("Q1")
+                        if pd.isna(q_best):
+                            q_best = driver.get("BestLapTime")
+
                         entry.update(
                             {
                                 "q1": format_timedelta(driver.get("Q1")),
                                 "q2": format_timedelta(driver.get("Q2")),
                                 "q3": format_timedelta(driver.get("Q3")),
-                                "best_time": format_timedelta(
-                                    driver.get("BestLapTime")
-                                ),
+                                "best_time": format_timedelta(q_best),
                             }
                         )
                     else:
