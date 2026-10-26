@@ -11,6 +11,8 @@ from ..utils import (
     format_timedelta,
     get_historical_team_color,
     format_ergast_driver,
+    resolve_team_color,
+    safe_get_laps,
 )
 
 telemetry_bp = Blueprint("telemetry", __name__)
@@ -144,8 +146,13 @@ def get_race_comparison():
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
 
-        driver1_laps = session.laps.pick_drivers(driver1_number)
-        driver2_laps = session.laps.pick_drivers(driver2_number)
+        laps = safe_get_laps(session)
+        driver1_laps = (
+            laps.pick_drivers(driver1_number) if laps is not None else pd.DataFrame()
+        )
+        driver2_laps = (
+            laps.pick_drivers(driver2_number) if laps is not None else pd.DataFrame()
+        )
 
         def format_lap_data(laps, driver_number):
             lap_data = []
@@ -163,11 +170,7 @@ def get_race_comparison():
                 "abbreviation": str(driver1_info["Abbreviation"]),
                 "full_name": str(driver1_info["FullName"]),
                 "team": str(driver1_info["TeamName"]),
-                "team_color": (
-                    str(driver1_info["TeamColor"])
-                    if "TeamColor" in driver1_info
-                    else None
-                ),
+                "team_color": resolve_team_color(driver1_info),
                 "laps": format_lap_data(driver1_laps, driver1_number),
             },
             "driver2": {
@@ -175,11 +178,7 @@ def get_race_comparison():
                 "abbreviation": str(driver2_info["Abbreviation"]),
                 "full_name": str(driver2_info["FullName"]),
                 "team": str(driver2_info["TeamName"]),
-                "team_color": (
-                    str(driver2_info["TeamColor"])
-                    if "TeamColor" in driver2_info
-                    else None
-                ),
+                "team_color": resolve_team_color(driver2_info),
                 "laps": format_lap_data(driver2_laps, driver2_number),
             },
         }
@@ -629,11 +628,36 @@ def get_race_summary():
         # Load with messages=True for quali to get results (classification)
         session.load(telemetry=False, weather=False, messages=is_quali)
 
-        results = session.results
-        laps = session.laps
+        results = getattr(session, "results", None)
+        laps = safe_get_laps(session)
 
-        if laps.empty:
-            return jsonify({"results": [], "total_laps": 0}), 200
+        if (results is None or results.empty) and laps is None:
+            return error_response("Session data is not yet available.", 404)
+
+        if (results is None or results.empty) and laps is not None:
+            pseudo_rows = []
+            for abbr, d_laps in laps.groupby("Driver"):
+                pseudo_rows.append(
+                    {
+                        "Abbreviation": str(abbr),
+                        "DriverNumber": (
+                            str(d_laps["DriverNumber"].iloc[0])
+                            if "DriverNumber" in d_laps.columns
+                            else "??"
+                        ),
+                        "FullName": str(abbr),
+                        "TeamName": (
+                            str(d_laps["Team"].iloc[0])
+                            if "Team" in d_laps.columns
+                            else "Unknown"
+                        ),
+                        "TeamColor": "",
+                        "Status": "Finished",
+                        "BestLapTime": d_laps["LapTime"].min(),
+                        "Position": np.nan,
+                    }
+                )
+            results = pd.DataFrame(pseudo_rows)
 
         # --- Position Fallback for Practice sessions ---
         is_practice = not is_quali and "race" not in session_name.lower()
@@ -645,7 +669,7 @@ def get_race_summary():
                     "BestLapTime" not in results.columns
                     or results["BestLapTime"].isna().all()
                 ):
-                    if not laps.empty:
+                    if laps is not None:
                         best_times = laps.groupby("Driver")["LapTime"].min().to_dict()
                         results["BestLapTime"] = results["Abbreviation"].map(best_times)
 
@@ -662,33 +686,36 @@ def get_race_summary():
                     results = pd.concat([results_with_time, results_no_time])
 
         # 1 & 2. Determine phase intervals and assign phases to laps using FastF1 built-in method
-        laps["Phase"] = "Session"
         is_sprint_quali = "sprint" in session_name.lower()
         phase_prefix = "SQ" if is_sprint_quali else "Q"
+        unique_phases = []
 
-        if is_quali:
-            try:
-                # This built-in method automatically handles red flags and complex session structures
-                q_phases = laps.split_qualifying_sessions()
+        if laps is not None:
+            laps["Phase"] = "Session"
 
-                # It returns a list of lap dataframes corresponding to Q1, Q2, Q3
-                for i, phase_laps in enumerate(q_phases):
-                    phase_name = f"{phase_prefix}{i+1}"
-                    # Assign this phase name back to the main laps dataframe using index matching
-                    if not phase_laps.empty:
-                        laps.loc[phase_laps.index, "Phase"] = phase_name
-            except Exception as e:
-                print(
-                    f"[TELEMETRY] Warning: split_qualifying_sessions failed: {e}",
-                    file=sys.stderr,
-                )
-                # Fallback: if it fails completely, leave everything as "Session"
-                pass
+            if is_quali:
+                try:
+                    # This built-in method automatically handles red flags and complex session structures
+                    q_phases = laps.split_qualifying_sessions()
 
-        # 3. Determine available phases (Buttons)
-        unique_phases = sorted(
-            [p for p in laps["Phase"].unique().tolist() if p != "Session"]
-        )
+                    # It returns a list of lap dataframes corresponding to Q1, Q2, Q3
+                    for i, phase_laps in enumerate(q_phases):
+                        phase_name = f"{phase_prefix}{i+1}"
+                        # Assign this phase name back to the main laps dataframe using index matching
+                        if phase_laps is not None and not phase_laps.empty:
+                            laps.loc[phase_laps.index, "Phase"] = phase_name
+                except Exception as e:
+                    print(
+                        f"[TELEMETRY] Warning: split_qualifying_sessions failed: {e}",
+                        file=sys.stderr,
+                    )
+                    # Fallback: if it fails completely, leave everything as "Session"
+                    pass
+
+            # 3. Determine available phases (Buttons)
+            unique_phases = sorted(
+                [p for p in laps["Phase"].unique().tolist() if p != "Session"]
+            )
 
         if is_quali:
             max_reached = 1
@@ -723,6 +750,10 @@ def get_race_summary():
         )
         phase_bests = {}
         for p in phases_to_compute:
+            if laps is None:
+                phase_bests[p] = {"sector_1": None, "sector_2": None, "sector_3": None}
+                continue
+
             # Safely handle IsAccurate boolean with fillna and explicit casting
             accurate_mask = laps["IsAccurate"].fillna(False).astype(bool)
             p_laps = laps[(laps["Phase"] == p) & accurate_mask]
@@ -752,11 +783,15 @@ def get_race_summary():
                 ),
             }
 
-        total_laps = int(laps["LapNumber"].max()) if not laps.empty else 0
+        total_laps = int(laps["LapNumber"].max()) if laps is not None else 0
 
         # Track Status Mapping (Unchanged)
         status_events = []
-        if hasattr(session, "track_status") and not session.track_status.empty:
+        if (
+            laps is not None
+            and hasattr(session, "track_status")
+            and not session.track_status.empty
+        ):
             target_statuses = {"4": "SC", "5": "Red Flag", "6": "VSC"}
             current_status = "1"
             start_time = None
@@ -800,16 +835,27 @@ def get_race_summary():
                 )
 
         summary_data = []
-        for _, driver in results.iterrows():
+        for idx, (_, driver) in enumerate(results.iterrows()):
             abbrev = str(driver["Abbreviation"])
-            driver_laps = laps[laps["Driver"] == abbrev].copy()
+            driver_laps = (
+                laps[laps["Driver"] == abbrev].copy()
+                if laps is not None
+                else pd.DataFrame()
+            )
 
             pos_val = driver.get("Position")
-            pos = int(pos_val) if pd.notna(pos_val) else 20
+            pos = int(pos_val) if pd.notna(pos_val) else idx + 1
 
             # Driver personal bests per phase
             driver_phase_pb = {}
             for p in phases_to_compute:
+                if driver_laps.empty:
+                    driver_phase_pb[p] = {
+                        "sector_1": None,
+                        "sector_2": None,
+                        "sector_3": None,
+                    }
+                    continue
                 # Safely handle IsAccurate boolean with fillna and explicit casting
                 accurate_mask = driver_laps["IsAccurate"].fillna(False).astype(bool)
                 dp_laps = driver_laps[(driver_laps["Phase"] == p) & accurate_mask]
@@ -961,10 +1007,11 @@ def get_race_summary():
                     "abbreviation": abbrev,
                     "full_name": str(driver["FullName"]),
                     "team_name": str(driver["TeamName"]),
-                    "team_color": (
-                        str(driver["TeamColor"])
-                        if pd.notna(driver["TeamColor"])
-                        else "777777"
+                    "team_color": resolve_team_color(driver),
+                    "status": (
+                        str(driver.get("Status", "Finished"))
+                        if pd.notna(driver.get("Status"))
+                        else "Finished"
                     ),
                     "stints": stints,
                     "max_phase": (

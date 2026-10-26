@@ -29,6 +29,10 @@ const sortedResults = computed(() => {
   );
 });
 
+const hasStintData = computed(
+  () => props.year >= 2018 && (props.summaryData?.total_laps || 0) > 0,
+);
+
 const getStatusColor = (type) => {
   if (type === "SC") return "#ffff00"; // Safety Car Yellow
   if (type === "VSC") return "#faff72"; // Lighter Lemon Yellow for VSC
@@ -74,10 +78,16 @@ const calculatePosition = (startLap, lapCount = 1) => {
             Note: Detailed lap and strategy data is not available for this era.
           </p>
         </div>
+        <div v-else-if="!hasStintData" class="historical-note">
+          <p>
+            Note: Detailed lap and tyre strategy data is not yet available for
+            this session.
+          </p>
+        </div>
 
         <!-- Track Status Header Row -->
         <div
-          v-if="summaryData.track_status_events?.length && year >= 2018"
+          v-if="summaryData.track_status_events?.length && hasStintData"
           class="track-status-row"
         >
           <div class="col-pos"></div>
@@ -109,7 +119,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
         <div class="summary-header">
           <div class="col-pos">POS</div>
           <div class="col-driver">DRIVER</div>
-          <div class="col-stints" v-if="year >= 2018">
+          <div class="col-stints" v-if="hasStintData">
             TYRE STRATEGY (LAPS PER STINT)
           </div>
         </div>
@@ -132,7 +142,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
             </div>
           </div>
 
-          <div class="col-stints" v-if="year >= 2018">
+          <div class="col-stints" v-if="hasStintData">
             <div class="stint-timeline">
               <div
                 v-for="(stint, index) in driver.stints"

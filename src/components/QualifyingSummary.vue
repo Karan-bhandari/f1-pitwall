@@ -28,6 +28,10 @@ const props = defineProps({
 
 const selectedPhase = ref("");
 
+const hasLapData = computed(
+  () => props.year >= 2018 && (props.summaryData?.total_laps || 0) > 0,
+);
+
 // Dynamically get phases from backend
 const availablePhases = computed(() => {
   if (
@@ -144,6 +148,12 @@ const getSectorColorForTheme = (status) => {
           Recap for classification.
         </p>
       </div>
+      <div v-else-if="!hasLapData" class="historical-note">
+        <p>
+          Note: Detailed lap-by-lap sector data is not yet available for this
+          session. See Weekend Recap for qualifying phase times.
+        </p>
+      </div>
 
       <div class="summary-table">
         <!-- Unified Header -->
@@ -152,7 +162,7 @@ const getSectorColorForTheme = (status) => {
             <div class="col-pos">POS</div>
             <div class="col-driver">DRIVER / TEAM</div>
           </div>
-          <div class="col-scrollable header-cell" v-if="year >= 2018">
+          <div class="col-scrollable header-cell" v-if="hasLapData">
             LAPS IN {{ selectedPhase }}
           </div>
         </div>
@@ -177,7 +187,7 @@ const getSectorColorForTheme = (status) => {
             </div>
           </div>
 
-          <div class="col-scrollable row-cell" v-if="year >= 2018">
+          <div class="col-scrollable row-cell" v-if="hasLapData">
             <div class="laps-row">
               <template v-for="stint in driver.stints" :key="stint.run_number">
                 <template v-for="lap in stint.laps" :key="lap.lap_number">

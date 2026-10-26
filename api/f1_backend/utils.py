@@ -18,6 +18,8 @@ HISTORICAL_TEAM_COLORS = {
     "alfa": "C92D4B",
     "alphatauri": "4E7C9B",
     "racing_point": "F596C8",
+    "kick_sauber": "52E252",
+    "racing_bulls": "6692FF",
     # --- Classic / Historical ---
     "benetton": "008855",
     "renault": "FFF500",
@@ -54,7 +56,50 @@ HISTORICAL_TEAM_COLORS = {
 def get_historical_team_color(constructor_id):
     if not constructor_id or pd.isna(constructor_id):
         return "777777"
-    return HISTORICAL_TEAM_COLORS.get(str(constructor_id).lower().strip(), "777777")
+    key = str(constructor_id).lower().strip()
+    if key in HISTORICAL_TEAM_COLORS:
+        return HISTORICAL_TEAM_COLORS[key]
+    normalized = (
+        key.replace(" f1 team", "")
+        .replace(" racing", "")
+        .replace(" ", "_")
+        .strip("_")
+    )
+    if normalized in HISTORICAL_TEAM_COLORS:
+        return HISTORICAL_TEAM_COLORS[normalized]
+    for k, color in HISTORICAL_TEAM_COLORS.items():
+        if k in normalized or normalized in k:
+            return color
+    return "777777"
+
+
+def resolve_team_color(driver_row):
+    """Resolve a valid hex team color from a FastF1 or Ergast driver row."""
+    if driver_row is None:
+        return "777777"
+    raw_color = driver_row.get("TeamColor")
+    if pd.notna(raw_color):
+        cleaned = str(raw_color).strip().lstrip("#")
+        if cleaned and cleaned.lower() not in ("nan", "none", "null"):
+            return cleaned
+    for field in ("TeamId", "constructorId", "TeamName", "Team", "constructorName"):
+        val = driver_row.get(field)
+        if pd.notna(val) and str(val).strip():
+            color = get_historical_team_color(val)
+            if color != "777777":
+                return color
+    return "777777"
+
+
+def safe_get_laps(session):
+    """Safely access session.laps without triggering DataNotLoadedError."""
+    try:
+        laps = session.laps
+        if laps is not None and not laps.empty:
+            return laps
+    except Exception:
+        pass
+    return None
 
 
 def validate_year(year):

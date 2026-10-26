@@ -10,6 +10,8 @@ from ..utils import (
     format_timedelta,
     get_historical_team_color,
     format_ergast_driver,
+    resolve_team_color,
+    safe_get_laps as _safe_get_laps,
 )
 
 recap_bp = Blueprint("recap", __name__)
@@ -46,6 +48,11 @@ def _get_historical_weekend_summary(year, event, event_name):
             for idx, driver in df.iterrows():
                 pos = int(driver.get("position", idx + 1))
                 base = format_ergast_driver(driver)
+                race_best = driver.get("fastestLapTime")
+                if pd.isna(race_best):
+                    race_best = driver.get("totalRaceTime")
+                if pd.isna(race_best):
+                    race_best = driver.get("Time")
                 entry = {
                     **base,
                     "pos": pos,
@@ -60,7 +67,9 @@ def _get_historical_weekend_summary(year, event, event_name):
                         if pd.notna(driver.get("grid"))
                         else None
                     ),
-                    "best_time": None,
+                    "best_time": (
+                        safe_format_td(race_best) if pd.notna(race_best) else None
+                    ),
                 }
                 summary["results"].append(entry)
                 if pos <= 3:
@@ -164,20 +173,11 @@ def _get_track_status_incidents(session):
                     )
                 current_status = status
     except Exception as e:
-        print(f"[RECAP] Warning: Failed to parse track status: {e}", file=sys.stderr)
+        if type(e).__name__ != "DataNotLoadedError":
+            print(
+                f"[RECAP] Warning: Failed to parse track status: {e}", file=sys.stderr
+            )
     return incidents
-
-
-def _safe_get_laps(session):
-    """Safely access session.laps without triggering DataNotLoadedError."""
-    try:
-        # FastF1 3.x property access raises DataNotLoadedError if not loaded
-        laps = session.laps
-        if laps is not None and not laps.empty:
-            return laps
-    except Exception:
-        pass
-    return None
 
 
 def _extract_session_insights(session, results, s_name):
@@ -293,11 +293,7 @@ def _extract_session_insights(session, results, s_name):
                             "pos": k + 1,
                             "abbreviation": str(driver.get("Abbreviation", "N/A")),
                             "team": str(driver.get("TeamName", "N/A")),
-                            "color": (
-                                str(driver.get("TeamColor"))
-                                if pd.notna(driver.get("TeamColor"))
-                                else "777777"
-                            ),
+                            "color": resolve_team_color(driver),
                         }
                     )
                 insights["podium"] = podium
@@ -393,6 +389,7 @@ def get_weekend_summary():
                 results = session.results
                 s_id = s_name.lower().replace(" ", "_")
                 lname = s_name.lower()
+                laps = _safe_get_laps(session)
                 laps_fallback = {}
                 laps_count_fallback = {}
 
@@ -409,7 +406,6 @@ def get_weekend_summary():
                         )
                         has_results_data = has_best_time and has_laps
 
-                    laps = _safe_get_laps(session)
                     if not has_results_data and laps is not None:
                         print(
                             f"[RECAP] Practice results incomplete for {s_name}. Recovering from raw laps...",
@@ -420,6 +416,58 @@ def get_weekend_summary():
                             laps_with_times.groupby("Driver")["LapTime"].min().to_dict()
                         )
                         laps_count_fallback = laps.groupby("Driver").size().to_dict()
+
+                    if not has_results_data and not laps_fallback:
+                        print(
+                            f"[RECAP] Skipping {s_name}: No practice times or lap data available.",
+                            file=sys.stderr,
+                        )
+                        continue
+                elif is_quali:
+                    if (
+                        results is not None
+                        and not results.empty
+                        and ("Q1" not in results.columns or results["Q1"].isna().all())
+                        and laps is not None
+                    ):
+                        try:
+                            q_phases = laps.split_qualifying_sessions()
+                            results = results.copy()
+                            for q_idx, phase_laps in enumerate(q_phases[:3]):
+                                col = f"Q{q_idx + 1}"
+                                if phase_laps is not None and not phase_laps.empty:
+                                    valid_q = phase_laps[phase_laps["LapTime"].notna()]
+                                    if "Deleted" in valid_q.columns:
+                                        valid_q = valid_q[
+                                            ~valid_q["Deleted"]
+                                            .fillna(False)
+                                            .astype(bool)
+                                        ]
+                                    q_bests = (
+                                        valid_q.groupby("Driver")["LapTime"]
+                                        .min()
+                                        .to_dict()
+                                    )
+                                    results[col] = results["Abbreviation"].map(q_bests)
+                                    if q_idx == 1 and "Position" in results.columns:
+                                        results.loc[results["Position"] > 15, col] = (
+                                            pd.NaT
+                                        )
+                                    elif q_idx == 2 and "Position" in results.columns:
+                                        results.loc[results["Position"] > 10, col] = (
+                                            pd.NaT
+                                        )
+                        except Exception as q_err:
+                            print(
+                                f"[RECAP] Warning: Failed to recover Q1/Q2/Q3 from laps: {q_err}",
+                                file=sys.stderr,
+                            )
+                elif laps is not None and "LapTime" in laps.columns and "Driver" in laps.columns:
+                    laps_with_times = laps[laps["LapTime"].notna()]
+                    if not laps_with_times.empty:
+                        laps_fallback = (
+                            laps_with_times.groupby("Driver")["LapTime"].min().to_dict()
+                        )
 
                 if (results is None or results.empty) and not laps_fallback:
                     print(
@@ -495,11 +543,7 @@ def get_weekend_summary():
                         "abbreviation": abbr,
                         "full_name": str(driver.get("FullName", "Unknown")),
                         "team_name": str(driver.get("TeamName", "Unknown")),
-                        "team_color": (
-                            str(driver.get("TeamColor"))
-                            if pd.notna(driver.get("TeamColor"))
-                            else "777777"
-                        ),
+                        "team_color": resolve_team_color(driver),
                         "status": str(driver.get("Status", "Finished")),
                     }
 
@@ -537,6 +581,16 @@ def get_weekend_summary():
                             }
                         )
                     else:
+                        race_best = driver.get("BestLapTime")
+                        if pd.isna(race_best) and abbr in laps_fallback:
+                            race_best = laps_fallback[abbr]
+                        if pd.isna(race_best):
+                            race_best = driver.get("fastestLapTime")
+                        if pd.isna(race_best):
+                            race_best = driver.get("Time")
+                        if pd.isna(race_best):
+                            race_best = driver.get("totalRaceTime")
+
                         entry.update(
                             {
                                 "points": (
@@ -549,9 +603,7 @@ def get_weekend_summary():
                                     if pd.notna(driver.get("GridPosition"))
                                     else None
                                 ),
-                                "best_time": format_timedelta(
-                                    driver.get("BestLapTime")
-                                ),
+                                "best_time": format_timedelta(race_best),
                             }
                         )
 

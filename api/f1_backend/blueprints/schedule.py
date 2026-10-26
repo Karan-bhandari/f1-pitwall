@@ -6,6 +6,7 @@ from ..utils import (
     error_response,
     get_historical_team_color,
     format_ergast_driver,
+    resolve_team_color,
 )
 
 schedule_bp = Blueprint("schedule", __name__)
@@ -157,11 +158,7 @@ def get_drivers():
                     "team_id": (
                         str(driver_info["TeamId"]) if "TeamId" in driver_info else None
                     ),
-                    "team_color": (
-                        str(driver_info["TeamColor"])
-                        if "TeamColor" in driver_info
-                        else None
-                    ),
+                    "team_color": resolve_team_color(driver_info),
                     "display_name": f"{driver_info['FullName']} ({driver_info['Abbreviation']})",
                     "driver_key": str(driver_info["Abbreviation"]),
                 }
