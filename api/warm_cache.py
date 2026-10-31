@@ -168,6 +168,17 @@ def main():
         warm_round_batch(args.years[0], args.start_round, args.end_round, args.force)
         return
 
+    _load_dotenv()
+    _quiet_loggers()
+    try:
+        from fastf1.internals.f1account import get_token
+
+        tok = get_token()
+        rem_min = round((tok.expires_at - time.time()) / 60, 1)
+        print(f"Authenticated with Formula 1 account (token valid for {rem_min}m).")
+    except Exception as e:
+        print(f"Warning: F1 authentication check failed ({e}). Continuing...")
+
     t0 = time.time()
     print(
         f"Starting FastF1 cache warm-up for years: {', '.join(map(str, args.years))} "
