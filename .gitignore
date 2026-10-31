@@ -32,7 +32,6 @@ ENV/
 
 # Project Specific ignores
 api/.python-version
-api/uv.lock
 api/*.ipynb
 api/instance/
 instance/
