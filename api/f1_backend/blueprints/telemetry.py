@@ -13,6 +13,8 @@ from ..utils import (
     format_ergast_driver,
     resolve_team_color,
     safe_get_laps,
+    extract_driver_penalties,
+    format_driver_status_detail,
 )
 
 telemetry_bp = Blueprint("telemetry", __name__)
@@ -212,22 +214,32 @@ def get_laps():
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=False, weather=False, messages=False)
 
-        driver_laps = session.laps.pick_drivers(driver_number)
-
-        # Get valid lap numbers
-        valid_laps = (
-            driver_laps[driver_laps["LapTime"].notna()]["LapNumber"]
-            .astype(int)
-            .tolist()
+        laps = safe_get_laps(session)
+        driver_laps = (
+            laps.pick_drivers(driver_number) if laps is not None else pd.DataFrame()
         )
 
-        # Get fastest lap number
-        fastest_lap = driver_laps.pick_fastest()
-        fastest_lap_number = (
-            int(fastest_lap["LapNumber"])
-            if not pd.isna(fastest_lap["LapNumber"])
-            else None
-        )
+        if driver_laps.empty:
+            valid_laps = []
+            fastest_lap_number = None
+        else:
+            # Get valid lap numbers
+            valid_laps = (
+                driver_laps[driver_laps["LapTime"].notna()]["LapNumber"]
+                .astype(int)
+                .tolist()
+            )
+
+            # Get fastest lap number
+            fastest_lap = driver_laps.pick_fastest()
+            fastest_lap_number = (
+                int(fastest_lap["LapNumber"])
+                if fastest_lap is not None
+                and not fastest_lap.empty
+                and "LapNumber" in fastest_lap
+                and pd.notna(fastest_lap["LapNumber"])
+                else None
+            )
 
         return jsonify({"laps": valid_laps, "fastest_lap": fastest_lap_number}), 200
     except Exception as e:
@@ -272,8 +284,12 @@ def get_lap_telemetry():
         session = fastf1.get_session(year, event_key, session_name)
         session.load(telemetry=True, weather=False, messages=False)
 
-        driver1_lap = session.laps.pick_drivers(driver1_number).pick_laps(lap1_number)
-        driver2_lap = session.laps.pick_drivers(driver2_number).pick_laps(lap2_number)
+        laps = safe_get_laps(session)
+        if laps is None or laps.empty:
+            return error_response("No lap data available for this session.", 404)
+
+        driver1_lap = laps.pick_drivers(driver1_number).pick_laps(lap1_number)
+        driver2_lap = laps.pick_drivers(driver2_number).pick_laps(lap2_number)
 
         # Check if laps exist
         if driver1_lap.empty:
@@ -351,20 +367,19 @@ def get_lap_telemetry():
                 "abbreviation": str(driver1_info["Abbreviation"]),
                 "full_name": str(driver1_info["FullName"]),
                 "team": str(driver1_info["TeamName"]),
-                "team_color": (
-                    str(driver1_info["TeamColor"])
-                    if "TeamColor" in driver1_info
-                    else None
-                ),
+                "team_color": resolve_team_color(driver1_info),
                 "lap_number": lap1_number,
                 "lap_time": (
-                    str(driver1_lap["LapTime"].iloc[0])
+                    format_timedelta(driver1_lap["LapTime"].iloc[0])
                     if not driver1_lap["LapTime"].empty
+                    and pd.notna(driver1_lap["LapTime"].iloc[0])
                     else None
                 ),
                 "lap_time_seconds": (
                     float(driver1_lap["LapTime"].iloc[0].total_seconds())
                     if not driver1_lap["LapTime"].empty
+                    and pd.notna(driver1_lap["LapTime"].iloc[0])
+                    and hasattr(driver1_lap["LapTime"].iloc[0], "total_seconds")
                     else None
                 ),
                 "telemetry": format_telemetry(
@@ -376,20 +391,19 @@ def get_lap_telemetry():
                 "abbreviation": str(driver2_info["Abbreviation"]),
                 "full_name": str(driver2_info["FullName"]),
                 "team": str(driver2_info["TeamName"]),
-                "team_color": (
-                    str(driver2_info["TeamColor"])
-                    if "TeamColor" in driver2_info
-                    else None
-                ),
+                "team_color": resolve_team_color(driver2_info),
                 "lap_number": lap2_number,
                 "lap_time": (
-                    str(driver2_lap["LapTime"].iloc[0])
+                    format_timedelta(driver2_lap["LapTime"].iloc[0])
                     if not driver2_lap["LapTime"].empty
+                    and pd.notna(driver2_lap["LapTime"].iloc[0])
                     else None
                 ),
                 "lap_time_seconds": (
                     float(driver2_lap["LapTime"].iloc[0].total_seconds())
                     if not driver2_lap["LapTime"].empty
+                    and pd.notna(driver2_lap["LapTime"].iloc[0])
+                    and hasattr(driver2_lap["LapTime"].iloc[0], "total_seconds")
                     else None
                 ),
                 "telemetry": format_telemetry(
@@ -432,8 +446,12 @@ def get_fastest_lap():
         use_telemetry = year >= 2018
         session.load(telemetry=use_telemetry, weather=False, messages=False)
 
-        driver1_laps = session.laps.pick_drivers(driver1_number)
-        driver2_laps = session.laps.pick_drivers(driver2_number)
+        laps = safe_get_laps(session)
+        if laps is None or laps.empty:
+            return error_response("No lap data available for this session.", 404)
+
+        driver1_laps = laps.pick_drivers(driver1_number)
+        driver2_laps = laps.pick_drivers(driver2_number)
 
         if driver1_laps.empty or driver2_laps.empty:
             return error_response(
@@ -441,14 +459,17 @@ def get_fastest_lap():
             )
 
         # Safely handle Deleted boolean with fillna and explicit casting
-        mask1 = driver1_laps["Deleted"].fillna(False).astype(bool)
-        driver1_valid_laps = (
-            driver1_laps[~mask1] if "Deleted" in driver1_laps.columns else driver1_laps
-        )
-        mask2 = driver2_laps["Deleted"].fillna(False).astype(bool)
-        driver2_valid_laps = (
-            driver2_laps[~mask2] if "Deleted" in driver2_laps.columns else driver2_laps
-        )
+        if "Deleted" in driver1_laps.columns:
+            mask1 = driver1_laps["Deleted"].fillna(False).astype(bool)
+            driver1_valid_laps = driver1_laps[~mask1]
+        else:
+            driver1_valid_laps = driver1_laps
+
+        if "Deleted" in driver2_laps.columns:
+            mask2 = driver2_laps["Deleted"].fillna(False).astype(bool)
+            driver2_valid_laps = driver2_laps[~mask2]
+        else:
+            driver2_valid_laps = driver2_laps
 
         driver1_fastest = driver1_valid_laps.loc[driver1_valid_laps["LapTime"].idxmin()]
         driver2_fastest = driver2_valid_laps.loc[driver2_valid_laps["LapTime"].idxmin()]
@@ -533,11 +554,7 @@ def get_fastest_lap():
                 "abbreviation": str(driver1_info["Abbreviation"]),
                 "full_name": str(driver1_info["FullName"]),
                 "team": str(driver1_info["TeamName"]),
-                "team_color": (
-                    str(driver1_info["TeamColor"])
-                    if "TeamColor" in driver1_info
-                    else None
-                ),
+                "team_color": resolve_team_color(driver1_info),
                 "fastest_lap": _format_lap_entry(driver1_fastest, driver1_number),
                 "telemetry": format_telemetry(
                     driver1_fastest_telemetry,
@@ -550,11 +567,7 @@ def get_fastest_lap():
                 "abbreviation": str(driver2_info["Abbreviation"]),
                 "full_name": str(driver2_info["FullName"]),
                 "team": str(driver2_info["TeamName"]),
-                "team_color": (
-                    str(driver2_info["TeamColor"])
-                    if "TeamColor" in driver2_info
-                    else None
-                ),
+                "team_color": resolve_team_color(driver2_info),
                 "fastest_lap": _format_lap_entry(driver2_fastest, driver2_number),
                 "telemetry": format_telemetry(
                     driver2_fastest_telemetry,
@@ -604,7 +617,71 @@ def get_race_summary():
                 for idx, driver in df.iterrows():
                     pos = int(driver.get("position", idx + 1))
                     base = format_ergast_driver(driver)
-                    entry = {**base, "position": pos}
+                    grid_val = driver.get("grid")
+                    grid_pos = (
+                        int(grid_val)
+                        if pd.notna(grid_val) and int(grid_val) > 0
+                        else None
+                    )
+                    pos_gained = (grid_pos - pos) if grid_pos is not None else None
+                    pts_val = driver.get("points")
+                    pts = float(pts_val) if pd.notna(pts_val) else 0.0
+                    c_laps = (
+                        int(driver.get("laps"))
+                        if pd.notna(driver.get("laps"))
+                        else None
+                    )
+
+                    status_info = format_driver_status_detail(
+                        driver,
+                        completed_laps=c_laps,
+                        total_laps=0,
+                        penalties=[],
+                    )
+
+                    time_val = driver.get("totalRaceTime")
+                    if pd.isna(time_val):
+                        time_val = driver.get("Time")
+                    finish_time = None
+                    if status_info["status_category"] == "finished" and pd.notna(
+                        time_val
+                    ):
+                        if hasattr(time_val, "total_seconds"):
+                            if pos == 1:
+                                finish_time = format_timedelta(time_val)
+                            else:
+                                if time_val.total_seconds() < 180:
+                                    finish_time = f"+{time_val.total_seconds():.3f}s"
+                                else:
+                                    finish_time = format_timedelta(time_val)
+                        else:
+                            finish_time = str(time_val)
+
+                    rank_val = (
+                        driver.get("rank")
+                        or driver.get("fastestRank")
+                        or driver.get("fastestLapRank")
+                    )
+                    has_fl = bool(pd.notna(rank_val) and str(rank_val).strip() == "1")
+
+                    entry = {
+                        **base,
+                        "position": pos,
+                        "status": status_info["status_detail"],
+                        "status_badge": status_info["status_badge"],
+                        "status_category": status_info["status_category"],
+                        "status_detail": status_info["status_detail"],
+                        "penalties": [],
+                        "grid_position": grid_pos,
+                        "positions_gained": pos_gained,
+                        "points": pts,
+                        "finish_time": finish_time,
+                        "completed_laps": c_laps,
+                        "pit_stops": 0,
+                        "has_fastest_lap": has_fl,
+                        "stints": [],
+                        "max_phase": "Session",
+                    }
                     summary_data.append(entry)
             return (
                 jsonify(
@@ -625,11 +702,20 @@ def get_race_summary():
             k in session_name.lower() for k in ["qualifying", "shootout", "qualy"]
         )
 
-        # Load with messages=True for quali to get results (classification)
-        session.load(telemetry=False, weather=False, messages=is_quali)
+        # Load with messages=True to retrieve official steward penalties and warnings
+        session.load(telemetry=False, weather=False, messages=True)
 
         results = getattr(session, "results", None)
         laps = safe_get_laps(session)
+
+        fastest_lap_driver_abbr = None
+        if laps is not None and not laps.empty:
+            try:
+                fastest_lap = laps.pick_fastest()
+                if fastest_lap is not None and pd.notna(fastest_lap.get("Driver")):
+                    fastest_lap_driver_abbr = str(fastest_lap["Driver"])
+            except Exception:
+                pass
 
         if (results is None or results.empty) and laps is None:
             return error_response("Session data is not yet available.", 404)
@@ -717,6 +803,7 @@ def get_race_summary():
                 [p for p in laps["Phase"].unique().tolist() if p != "Session"]
             )
 
+        q1_cutoff = 16 if (results is not None and len(results) > 20) else 15
         if is_quali:
             max_reached = 1
             if (
@@ -732,7 +819,7 @@ def get_race_summary():
                     if pos <= 10:
                         max_reached = 3
                         break
-                    elif pos <= 15:
+                    elif pos <= q1_cutoff:
                         max_reached = max(max_reached, 2)
 
             fallback_phases = [f"{phase_prefix}{i}" for i in range(1, max_reached + 1)]
@@ -946,6 +1033,17 @@ def get_race_summary():
                                     if pd.notna(lap["IsPersonalBest"])
                                     else False
                                 ),
+                                "deleted": (
+                                    bool(lap["Deleted"])
+                                    if "Deleted" in lap and pd.notna(lap["Deleted"])
+                                    else False
+                                ),
+                                "deleted_reason": (
+                                    str(lap["DeletedReason"])
+                                    if "DeletedReason" in lap
+                                    and pd.notna(lap["DeletedReason"])
+                                    else None
+                                ),
                                 "compound": str(lap["Compound"]),
                                 "sectors": {
                                     "s1": {
@@ -1000,26 +1098,91 @@ def get_race_summary():
                             }
                         )
 
+            driver_num_str = str(driver["DriverNumber"])
+            penalties = extract_driver_penalties(session, driver_num_str, abbrev)
+
+            grid_val = driver.get("GridPosition")
+            if pd.isna(grid_val):
+                grid_val = driver.get("grid")
+            grid_position = (
+                int(grid_val) if pd.notna(grid_val) and int(grid_val) > 0 else None
+            )
+            positions_gained = (
+                (grid_position - pos)
+                if (grid_position is not None and grid_position > 0)
+                else None
+            )
+
+            pts_val = driver.get("Points")
+            if pd.isna(pts_val):
+                pts_val = driver.get("points")
+            points = float(pts_val) if pd.notna(pts_val) else 0.0
+
+            completed_laps_val = driver.get("Laps")
+            if pd.isna(completed_laps_val):
+                completed_laps_val = driver.get("NumberOfLaps")
+            if pd.notna(completed_laps_val):
+                completed_laps = int(completed_laps_val)
+            else:
+                completed_laps = (
+                    sum(st["lap_count"] for st in stints) if stints else None
+                )
+
+            status_info = format_driver_status_detail(
+                driver,
+                completed_laps=completed_laps,
+                total_laps=total_laps,
+                penalties=penalties,
+            )
+
+            raw_time = driver.get("Time")
+            finish_time = None
+            if status_info["status_category"] == "finished" and pd.notna(raw_time):
+                if hasattr(raw_time, "total_seconds"):
+                    if pos == 1:
+                        finish_time = format_timedelta(raw_time)
+                    else:
+                        if raw_time.total_seconds() < 180:
+                            finish_time = f"+{raw_time.total_seconds():.3f}s"
+                        else:
+                            finish_time = format_timedelta(raw_time)
+                else:
+                    finish_time = str(raw_time)
+
+            pit_stops = max(0, len(stints) - 1) if stints else 0
+            has_fastest_lap = bool(
+                fastest_lap_driver_abbr and abbrev == fastest_lap_driver_abbr
+            )
+
             summary_data.append(
                 {
                     "position": pos,
-                    "driver_number": str(driver["DriverNumber"]),
+                    "driver_number": driver_num_str,
                     "abbreviation": abbrev,
                     "full_name": str(driver["FullName"]),
                     "team_name": str(driver["TeamName"]),
                     "team_color": resolve_team_color(driver),
-                    "status": (
-                        str(driver.get("Status", "Finished"))
-                        if pd.notna(driver.get("Status"))
-                        else "Finished"
-                    ),
+                    "status": status_info["status_detail"],
+                    "status_badge": status_info["status_badge"],
+                    "status_category": status_info["status_category"],
+                    "status_detail": status_info["status_detail"],
+                    "penalties": penalties,
+                    "grid_position": grid_position,
+                    "positions_gained": positions_gained,
+                    "points": points,
+                    "finish_time": finish_time,
+                    "completed_laps": completed_laps,
+                    "pit_stops": pit_stops,
+                    "has_fastest_lap": has_fastest_lap,
                     "stints": stints,
                     "max_phase": (
                         (
                             f"{phase_prefix}3"
                             if pos <= 10
                             else (
-                                f"{phase_prefix}2" if pos <= 15 else f"{phase_prefix}1"
+                                f"{phase_prefix}2"
+                                if pos <= q1_cutoff
+                                else f"{phase_prefix}1"
                             )
                         )
                         if is_quali

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { getTyreIcon, formatLapTimeString } from "../utils";
+import F1Icon from "./F1Icon.vue";
 
 const props = defineProps({
   summaryData: {
@@ -25,6 +26,8 @@ const props = defineProps({
     default: 2024,
   },
 });
+
+const emit = defineEmits(["select-lap"]);
 
 const selectedPhase = ref("");
 
@@ -102,6 +105,19 @@ const filteredResults = computed(() => {
 
 const formatLapTime = (timeStr) => formatLapTimeString(timeStr);
 
+const isEliminated = (index) => {
+  const phase = selectedPhase.value || "";
+  if (phase === "Q1" || phase === "SQ1") {
+    const totalDrivers = props.summaryData?.results?.length || 20;
+    const q1Cutoff = totalDrivers > 20 ? 16 : 15;
+    return index >= q1Cutoff;
+  }
+  if (phase === "Q2" || phase === "SQ2") {
+    return index >= 10;
+  }
+  return false;
+};
+
 const getSectorColorForTheme = (status) => {
   const isDark = props.theme === "dark";
   switch (status) {
@@ -172,6 +188,7 @@ const getSectorColorForTheme = (status) => {
           v-for="(driver, index) in filteredResults"
           :key="driver.driver_number"
           class="driver-row"
+          :class="{ 'drop-zone-row': isEliminated(index) }"
         >
           <div class="col-fixed row-cell">
             <div class="col-pos">{{ index + 1 }}</div>
@@ -181,7 +198,16 @@ const getSectorColorForTheme = (status) => {
                 :style="{ backgroundColor: '#' + driver.team_color }"
               ></div>
               <div class="driver-info">
-                <span class="driver-name">{{ driver.abbreviation }}</span>
+                <div class="driver-name-row">
+                  <span class="driver-name">{{ driver.abbreviation }}</span>
+                  <span
+                    v-if="isEliminated(index)"
+                    class="eliminated-pill"
+                    title="Eliminated in this qualifying phase"
+                  >
+                    ELIMINATED
+                  </span>
+                </div>
                 <span class="team-name">{{ driver.team_name }}</span>
               </div>
             </div>
@@ -194,7 +220,17 @@ const getSectorColorForTheme = (status) => {
                   <div
                     v-if="lap.phase === selectedPhase"
                     class="lap-pill"
-                    :class="[lap.type, { 'is-pb': lap.is_pb }]"
+                    :class="[
+                      lap.type,
+                      { 'is-pb': lap.is_pb, 'deleted-lap': lap.deleted },
+                    ]"
+                    title="Click to compare telemetry for this lap"
+                    @click="
+                      emit('select-lap', {
+                        driverNumber: driver.driver_number,
+                        lapNumber: lap.lap_number,
+                      })
+                    "
                   >
                     <div class="lap-main">
                       <img
@@ -202,12 +238,25 @@ const getSectorColorForTheme = (status) => {
                         class="tyre-icon"
                         :title="lap.compound"
                       />
-                      <span class="lap-time">
+                      <span
+                        class="lap-time"
+                        :class="{ 'deleted-time': lap.deleted }"
+                      >
                         {{
                           lap.type === "push"
                             ? formatLapTime(lap.lap_time)
                             : lap.type.toUpperCase()
                         }}
+                      </span>
+                      <span
+                        v-if="lap.deleted"
+                        class="deleted-badge"
+                        :title="
+                          lap.deleted_reason ||
+                          'Lap time deleted (Track Limits)'
+                        "
+                      >
+                        <F1Icon name="ban" :size="12" /> DELETED
                       </span>
                     </div>
                     <div
@@ -378,7 +427,8 @@ const getSectorColorForTheme = (status) => {
 
 .col-pos {
   width: 40px;
-  font-family: "Roboto Mono", monospace;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-weight: 800;
   color: var(--muted-text-color);
   font-size: 1.1rem;
@@ -401,6 +451,51 @@ const getSectorColorForTheme = (status) => {
 .driver-info {
   display: flex;
   flex-direction: column;
+}
+
+.driver-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.eliminated-pill {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(235, 59, 53, 0.18);
+  color: #eb3b35;
+  border: 1px solid rgba(235, 59, 53, 0.35);
+  line-height: 1.2;
+}
+
+.drop-zone-row {
+  background: rgba(235, 59, 53, 0.05);
+  border-left: 3px solid rgba(235, 59, 53, 0.5);
+}
+
+.lap-pill.deleted-lap {
+  border: 1px dashed rgba(235, 59, 53, 0.6);
+  background: rgba(235, 59, 53, 0.08);
+}
+
+.deleted-time {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.deleted-badge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(235, 59, 53, 0.2);
+  color: #eb3b35;
+  margin-left: 4px;
+  cursor: help;
+  line-height: 1.2;
 }
 
 .driver-name {
@@ -435,6 +530,7 @@ const getSectorColorForTheme = (status) => {
   min-width: 190px;
   flex-shrink: 0;
   box-shadow: 0 2px 6px var(--shadow-color);
+  cursor: pointer;
   transition: transform 0.2s ease;
 }
 
@@ -457,7 +553,8 @@ const getSectorColorForTheme = (status) => {
 }
 
 .lap-time {
-  font-family: "Roboto Mono", monospace;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 1.15rem;
   font-weight: 800;
   color: var(--text-color);
@@ -473,7 +570,8 @@ const getSectorColorForTheme = (status) => {
   display: flex;
   gap: 12px; /* Tight gap between label and value */
   font-size: 0.8rem;
-  font-family: "Roboto Mono", monospace;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
@@ -505,14 +603,6 @@ const getSectorColorForTheme = (status) => {
   color: var(--muted-text-color);
 }
 
-.loading-state,
-.no-data,
-.error-state {
-  padding: 4rem;
-  text-align: center;
-  color: var(--muted-text-color);
-}
-
 .summary-scroll-area::-webkit-scrollbar {
   height: 8px;
 }
@@ -526,12 +616,22 @@ const getSectorColorForTheme = (status) => {
 
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
-  .driver-header {
-    width: 85px;
-    padding-right: 0.5rem;
+  .col-fixed {
+    width: 145px;
+    padding: 0.6rem 0.65rem;
+  }
+  .col-scrollable {
+    padding: 0.6rem 0.75rem;
+  }
+  .col-pos {
+    width: 28px;
+    font-size: 0.95rem;
+  }
+  .col-driver {
+    gap: 0.5rem;
   }
   .driver-name {
-    font-size: 1.1rem;
+    font-size: 1rem;
   }
   .team-name {
     font-size: 0.6rem;

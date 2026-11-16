@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { getTyreColor, getTyreIcon } from "../utils";
+import F1Icon from "./F1Icon.vue";
 
 const props = defineProps({
   summaryData: {
@@ -32,6 +33,9 @@ const sortedResults = computed(() => {
 const hasStintData = computed(
   () => props.year >= 2018 && (props.summaryData?.total_laps || 0) > 0,
 );
+
+const isRetired = (driver) =>
+  Boolean(driver && ["dnf", "dns", "dsq"].includes(driver.status_category));
 
 const getStatusColor = (type) => {
   if (type === "SC") return "#ffff00"; // Safety Car Yellow
@@ -92,6 +96,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
         >
           <div class="col-pos"></div>
           <div class="col-driver">TRACK STATUS</div>
+          <div class="col-status"></div>
           <div class="col-stints">
             <div class="status-timeline-container">
               <div
@@ -119,6 +124,19 @@ const calculatePosition = (startLap, lapCount = 1) => {
         <div class="summary-header">
           <div class="col-pos">POS</div>
           <div class="col-driver">DRIVER</div>
+          <div class="col-status header-status" title="Race Status / Info">
+            <span class="sr-only">RACE STATUS / INFO</span>
+            <div
+              class="status-header-grid"
+              :class="{ 'no-stints': !hasStintData }"
+            >
+              <span class="header-col header-col-time">STATUS / GAP</span>
+              <span v-if="hasStintData" class="header-col header-col-stops"
+                >STOPS</span
+              >
+              <span class="header-col header-col-pts">PTS</span>
+            </div>
+          </div>
           <div class="col-stints" v-if="hasStintData">
             TYRE STRATEGY (LAPS PER STINT)
           </div>
@@ -129,7 +147,32 @@ const calculatePosition = (startLap, lapCount = 1) => {
           :key="driver.driver_number"
           class="driver-row"
         >
-          <div class="col-pos">{{ driver.position }}</div>
+          <div class="col-pos">
+            <span class="pos-num">{{ driver.position }}</span>
+            <span
+              v-if="
+                driver.positions_gained !== null &&
+                driver.positions_gained !== undefined
+              "
+              class="pos-delta"
+              :class="{
+                gain: driver.positions_gained > 0,
+                loss: driver.positions_gained < 0,
+                even: driver.positions_gained === 0,
+              }"
+              :title="
+                driver.grid_position ? `Started P${driver.grid_position}` : ''
+              "
+            >
+              {{
+                driver.positions_gained > 0
+                  ? `▲${driver.positions_gained}`
+                  : driver.positions_gained < 0
+                    ? `▼${Math.abs(driver.positions_gained)}`
+                    : "="
+              }}
+            </span>
+          </div>
 
           <div class="col-driver">
             <div
@@ -137,8 +180,104 @@ const calculatePosition = (startLap, lapCount = 1) => {
               :style="{ backgroundColor: '#' + driver.team_color }"
             ></div>
             <div class="driver-info">
-              <span class="driver-name">{{ driver.full_name }}</span>
+              <div class="driver-name-row">
+                <span class="driver-name">{{ driver.full_name }}</span>
+                <span
+                  v-if="driver.has_fastest_lap"
+                  class="fl-pill fl-badge"
+                  title="Fastest Lap of the Race"
+                >
+                  <F1Icon name="stopwatch" :size="12" /> FL
+                </span>
+              </div>
               <span class="team-name">{{ driver.team_name }}</span>
+            </div>
+          </div>
+
+          <div class="col-status status-cell">
+            <div
+              class="status-metrics-row"
+              :class="{ 'no-stints': !hasStintData }"
+            >
+              <!-- Primary Timing / Gap / Status Badge -->
+              <div class="status-col status-col-time">
+                <span
+                  v-if="isRetired(driver)"
+                  class="status-badge"
+                  :class="'status-' + driver.status_category"
+                >
+                  {{ driver.status_badge }}
+                </span>
+                <span v-else class="finish-time">
+                  {{ driver.finish_time || driver.status || "Finished" }}
+                </span>
+              </div>
+
+              <!-- Pit Stops Slot (shown when session has stint/lap data) -->
+              <div v-if="hasStintData" class="status-col status-col-stops">
+                <span
+                  v-if="driver.pit_stops !== undefined && driver.pit_stops > 0"
+                  class="stop-badge stops-badge"
+                >
+                  {{ driver.pit_stops }}
+                  {{ driver.pit_stops === 1 ? "Stop" : "Stops" }}
+                </span>
+                <span
+                  v-else-if="driver.pit_stops === 0 && !isRetired(driver)"
+                  class="stop-badge stops-badge"
+                >
+                  0 Stops
+                </span>
+                <span v-else class="metric-empty" aria-hidden="true">—</span>
+              </div>
+
+              <!-- Points Slot -->
+              <div class="status-col status-col-pts">
+                <span v-if="driver.points > 0" class="pts-pill points-badge">
+                  +{{ driver.points }}
+                </span>
+                <span v-else class="pts-zero metric-empty" aria-hidden="true"
+                  >—</span
+                >
+              </div>
+            </div>
+
+            <!-- Retired Status Detail (e.g., Collision, Engine - Lap 42) -->
+            <div
+              v-if="isRetired(driver) && driver.status_detail"
+              class="status-detail-row"
+            >
+              <span class="status-detail-text" :title="driver.status_detail">
+                {{ driver.status_detail }}
+              </span>
+            </div>
+
+            <!-- Steward Penalties & Track Limit Warnings (Dedicated vertical stack) -->
+            <div
+              v-if="driver.penalties && driver.penalties.length > 0"
+              class="steward-pills-stack steward-pills-row"
+            >
+              <span
+                v-for="(p, pIdx) in driver.penalties"
+                :key="pIdx"
+                class="steward-pill penalty-chip"
+                :class="p.badge === 'B&W Flag' ? 'is-bw-flag' : 'is-penalty'"
+                :title="
+                  p.reason ? `${p.badge} — ${p.reason}` : p.message || p.badge
+                "
+              >
+                <F1Icon
+                  :name="p.badge === 'B&W Flag' ? 'bw-flag' : 'alert'"
+                  :size="13"
+                />
+                <span class="steward-pill-badge">
+                  {{
+                    p.badge === "B&W Flag"
+                      ? "Black & White Flag"
+                      : `${p.badge} Penalty`
+                  }}
+                </span>
+              </span>
             </div>
           </div>
 
@@ -202,7 +341,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   border-bottom: 1px solid var(--border-color);
   text-transform: uppercase;
   letter-spacing: 1px;
-  min-width: 800px;
+  min-width: 950px;
 }
 
 .track-status-row {
@@ -211,7 +350,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   padding: 0.5rem 1.5rem;
   background: var(--card-bg-color);
   border-bottom: 1px solid var(--border-color);
-  min-width: 800px;
+  min-width: 950px;
 }
 
 .track-status-row .col-driver {
@@ -273,7 +412,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
   position: relative;
   background: transparent;
   z-index: 1;
-  min-width: 800px;
+  min-width: 950px;
 }
 
 .driver-row:last-child {
@@ -285,18 +424,283 @@ const calculatePosition = (startLap, lapCount = 1) => {
 }
 
 .col-pos {
-  width: 50px;
-  font-family: "Roboto Mono", monospace;
+  width: 75px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-num {
+  min-width: 24px;
+  text-align: right;
   font-weight: 800;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   color: var(--text-color);
 }
 
+.pos-delta {
+  min-width: 34px;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+
+.pos-delta.gain {
+  color: #00d200;
+  background: rgba(0, 210, 0, 0.14);
+}
+
+.pos-delta.loss {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.14);
+}
+
+.pos-delta.even {
+  color: var(--muted-text-color);
+  background: rgba(128, 128, 128, 0.12);
+}
+
 .col-driver {
-  width: 280px;
+  width: 250px;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
+}
+
+.driver-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(179, 90, 209, 0.2);
+  color: #c468e2;
+  border: 1px solid rgba(179, 90, 209, 0.4);
+  line-height: 1.2;
+}
+
+.col-status {
+  width: 270px;
+  padding: 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.header-status {
+  justify-content: center;
+}
+
+.status-header-grid,
+.status-metrics-row {
+  display: grid;
+  grid-template-columns: 118px 64px 54px;
+  gap: 5px;
+  align-items: center;
+  width: 100%;
+}
+
+.status-header-grid.no-stints,
+.status-metrics-row.no-stints {
+  grid-template-columns: 1fr 54px;
+}
+
+.header-col {
+  font-weight: 800;
+  font-size: 0.72rem;
+  color: var(--muted-text-color);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.header-col-time {
+  text-align: left;
+}
+
+.header-col-stops {
+  text-align: center;
+}
+
+.header-col-pts {
+  text-align: right;
+}
+
+.status-col {
+  min-width: 0;
+}
+
+.status-col-time {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.status-col-stops {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.status-col-pts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.finish-time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-color);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+
+.stop-badge {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--item-bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--muted-text-color);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.pts-pill {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(0, 210, 0, 0.15);
+  color: #00d200;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.metric-empty {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted-text-color);
+  opacity: 0.45;
+  user-select: none;
+}
+
+.status-detail-row {
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+}
+
+.status-detail-text {
+  font-size: 0.72rem;
+  color: var(--muted-text-color);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.steward-pills-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin-top: 4px;
+  width: 100%;
+}
+
+.steward-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: help;
+  line-height: 1.2;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  max-width: 100%;
+}
+
+.steward-pill.is-penalty {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.steward-pill.is-bw-flag {
+  background: var(--item-bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.status-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  font-family: "JetBrains Mono", monospace;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.status-dnf {
+  background: rgba(235, 59, 53, 0.2);
+  color: #eb3b35;
+  border: 1px solid rgba(235, 59, 53, 0.4);
+}
+
+.status-dns {
+  background: rgba(142, 142, 147, 0.2);
+  color: #8e8e93;
+  border: 1px solid rgba(142, 142, 147, 0.4);
+}
+
+.status-dsq {
+  background: rgba(175, 82, 222, 0.2);
+  color: #af52de;
+  border: 1px solid rgba(175, 82, 222, 0.4);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 .team-stripe {
@@ -374,7 +778,8 @@ const calculatePosition = (startLap, lapCount = 1) => {
 }
 
 .lap-count {
-  font-family: "Roboto Mono", monospace;
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.85rem;
   font-weight: 800;
   letter-spacing: -0.5px;
@@ -420,23 +825,48 @@ const calculatePosition = (startLap, lapCount = 1) => {
 
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
-  .driver-header {
-    width: 90px;
-    padding-right: 0.5rem;
+  .col-pos {
+    width: 65px;
   }
-  .pos-number {
-    font-size: 1.1rem;
-    min-width: 20px;
+  .pos-num {
+    font-size: 1rem;
   }
-  .driver-abbrev {
-    font-size: 1.1rem;
+  .col-driver {
+    width: 210px;
+    gap: 0.5rem;
   }
-  .driver-team {
-    font-size: 0.6rem;
-    white-space: normal;
+  .driver-name {
+    font-size: 0.9rem;
   }
-  .stint-segment {
+  .team-name {
+    font-size: 0.65rem;
+  }
+  .col-status {
+    width: 250px;
     padding: 0 0.5rem;
+  }
+  .status-header-grid,
+  .status-metrics-row {
+    grid-template-columns: 106px 62px 48px;
+    gap: 4px;
+  }
+  .status-header-grid.no-stints,
+  .status-metrics-row.no-stints {
+    grid-template-columns: 1fr 48px;
+  }
+  .finish-time {
+    font-size: 0.76rem;
+  }
+  .stop-badge {
+    font-size: 0.62rem;
+    padding: 1px 4px;
+  }
+  .pts-pill {
+    font-size: 0.62rem;
+    padding: 1px 4px;
+  }
+  .header-col {
+    font-size: 0.68rem;
   }
 }
 </style>

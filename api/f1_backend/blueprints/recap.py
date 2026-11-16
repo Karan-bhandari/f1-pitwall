@@ -12,6 +12,8 @@ from ..utils import (
     format_ergast_driver,
     resolve_team_color,
     safe_get_laps as _safe_get_laps,
+    extract_driver_penalties,
+    format_driver_status_detail,
 )
 
 recap_bp = Blueprint("recap", __name__)
@@ -53,20 +55,61 @@ def _get_historical_weekend_summary(year, event, event_name):
                     race_best = driver.get("totalRaceTime")
                 if pd.isna(race_best):
                     race_best = driver.get("Time")
+                grid_pos = (
+                    int(driver.get("grid"))
+                    if pd.notna(driver.get("grid")) and int(driver.get("grid")) > 0
+                    else None
+                )
+                positions_gained = (grid_pos - pos) if grid_pos is not None else None
+                c_laps = (
+                    int(driver.get("laps")) if pd.notna(driver.get("laps")) else None
+                )
+                status_info = format_driver_status_detail(
+                    driver,
+                    completed_laps=c_laps,
+                    total_laps=0,
+                    penalties=[],
+                )
+                time_val = driver.get("totalRaceTime")
+                if pd.isna(time_val):
+                    time_val = driver.get("Time")
+                finish_time = None
+                if status_info["status_category"] == "finished" and pd.notna(time_val):
+                    if hasattr(time_val, "total_seconds"):
+                        if pos == 1:
+                            finish_time = format_timedelta(time_val)
+                        else:
+                            if time_val.total_seconds() < 180:
+                                finish_time = f"+{time_val.total_seconds():.3f}s"
+                            else:
+                                finish_time = format_timedelta(time_val)
+                    else:
+                        finish_time = str(time_val)
+
+                rank_val = (
+                    driver.get("rank")
+                    or driver.get("fastestRank")
+                    or driver.get("fastestLapRank")
+                )
+                has_fl = bool(pd.notna(rank_val) and str(rank_val).strip() == "1")
+
                 entry = {
                     **base,
                     "pos": pos,
-                    "status": str(driver.get("status", "Finished")),
+                    "status": status_info["status_detail"],
+                    "status_badge": status_info["status_badge"],
+                    "status_category": status_info["status_category"],
+                    "status_detail": status_info["status_detail"],
+                    "penalties": [],
+                    "positions_gained": positions_gained,
+                    "finish_time": finish_time,
+                    "has_fastest_lap": has_fl,
                     "points": (
                         int(float(driver.get("points", 0)))
                         if pd.notna(driver.get("points"))
                         else 0
                     ),
-                    "grid_pos": (
-                        int(driver.get("grid", 0))
-                        if pd.notna(driver.get("grid"))
-                        else None
-                    ),
+                    "grid_pos": grid_pos,
                     "best_time": (
                         safe_format_td(race_best) if pd.notna(race_best) else None
                     ),
@@ -375,11 +418,18 @@ def get_weekend_summary():
                 s_name = session.name
 
                 try:
+                    is_practice = any(
+                        k in session.name.lower() for k in ["practice", "fp"]
+                    )
                     is_quali = any(
                         k in session.name.lower()
                         for k in ["qualifying", "shootout", "qualy"]
                     )
-                    session.load(telemetry=False, weather=False, messages=is_quali)
+                    session.load(
+                        telemetry=False,
+                        weather=False,
+                        messages=not is_practice,
+                    )
                 except Exception as load_error:
                     print(
                         f"[RECAP] Load failed for session {s_name}: {load_error}",
@@ -462,7 +512,11 @@ def get_weekend_summary():
                                 f"[RECAP] Warning: Failed to recover Q1/Q2/Q3 from laps: {q_err}",
                                 file=sys.stderr,
                             )
-                elif laps is not None and "LapTime" in laps.columns and "Driver" in laps.columns:
+                elif (
+                    laps is not None
+                    and "LapTime" in laps.columns
+                    and "Driver" in laps.columns
+                ):
                     laps_with_times = laps[laps["LapTime"].notna()]
                     if not laps_with_times.empty:
                         laps_fallback = (
@@ -533,6 +587,17 @@ def get_weekend_summary():
                     # Format for downstream loop: (None, pd.Series)
                     drivers_to_process = [(None, pd.Series(d)) for d in pseudo_results]
 
+                fastest_lap_driver_abbr = None
+                if laps is not None and not laps.empty:
+                    try:
+                        fastest_lap = laps.pick_fastest()
+                        if fastest_lap is not None and pd.notna(
+                            fastest_lap.get("Driver")
+                        ):
+                            fastest_lap_driver_abbr = str(fastest_lap["Driver"])
+                    except Exception:
+                        pass
+
                 for idx, (_, driver) in enumerate(drivers_to_process):
                     entry_pos = idx + 1
                     abbr = str(driver.get("Abbreviation", "??"))
@@ -591,6 +656,68 @@ def get_weekend_summary():
                         if pd.isna(race_best):
                             race_best = driver.get("totalRaceTime")
 
+                        grid_val = driver.get("GridPosition")
+                        if pd.isna(grid_val):
+                            grid_val = driver.get("grid")
+                        grid_pos = (
+                            int(grid_val)
+                            if pd.notna(grid_val) and int(grid_val) > 0
+                            else None
+                        )
+                        positions_gained = (
+                            (grid_pos - entry_pos)
+                            if (grid_pos is not None and grid_pos > 0)
+                            else None
+                        )
+
+                        driver_num_str = str(driver.get("DriverNumber", "??"))
+                        penalties = extract_driver_penalties(
+                            session, driver_num_str, abbr
+                        )
+
+                        completed_laps_val = driver.get("Laps")
+                        if pd.isna(completed_laps_val):
+                            completed_laps_val = driver.get("NumberOfLaps")
+                        c_laps = (
+                            int(completed_laps_val)
+                            if pd.notna(completed_laps_val)
+                            else None
+                        )
+                        tot_laps = (
+                            int(laps["LapNumber"].max())
+                            if laps is not None and not laps.empty
+                            else 0
+                        )
+
+                        status_info = format_driver_status_detail(
+                            driver,
+                            completed_laps=c_laps,
+                            total_laps=tot_laps,
+                            penalties=penalties,
+                        )
+
+                        raw_time = driver.get("Time")
+                        finish_time = None
+                        if status_info["status_category"] == "finished" and pd.notna(
+                            raw_time
+                        ):
+                            if hasattr(raw_time, "total_seconds"):
+                                if entry_pos == 1:
+                                    finish_time = format_timedelta(raw_time)
+                                else:
+                                    if raw_time.total_seconds() < 180:
+                                        finish_time = (
+                                            f"+{raw_time.total_seconds():.3f}s"
+                                        )
+                                    else:
+                                        finish_time = format_timedelta(raw_time)
+                            else:
+                                finish_time = str(raw_time)
+
+                        has_fl = bool(
+                            fastest_lap_driver_abbr and abbr == fastest_lap_driver_abbr
+                        )
+
                         entry.update(
                             {
                                 "points": (
@@ -598,11 +725,15 @@ def get_weekend_summary():
                                     if pd.notna(driver.get("Points"))
                                     else 0
                                 ),
-                                "grid_pos": (
-                                    int(driver.get("GridPosition"))
-                                    if pd.notna(driver.get("GridPosition"))
-                                    else None
-                                ),
+                                "grid_pos": grid_pos,
+                                "positions_gained": positions_gained,
+                                "status": status_info["status_detail"],
+                                "status_badge": status_info["status_badge"],
+                                "status_category": status_info["status_category"],
+                                "status_detail": status_info["status_detail"],
+                                "penalties": penalties,
+                                "finish_time": finish_time,
+                                "has_fastest_lap": has_fl,
                                 "best_time": format_timedelta(race_best),
                             }
                         )

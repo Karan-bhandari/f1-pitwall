@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { getWeekendSummary } from "../api";
 import { getTyreColor } from "../utils";
+import F1Icon from "./F1Icon.vue";
 
 const props = defineProps({
   year: { type: Number, required: true },
@@ -127,20 +128,20 @@ const isPracticeType = (name) => {
             <table>
               <thead>
                 <tr v-if="isPracticeType(activeSession.session_name)">
-                  <th>Pos</th>
+                  <th class="pos-header">Pos</th>
                   <th>Driver</th>
                   <th>Best Time</th>
                   <th>Laps</th>
                 </tr>
                 <tr v-else-if="isQualifyingType(activeSession.session_name)">
-                  <th>Pos</th>
+                  <th class="pos-header">Pos</th>
                   <th>Driver</th>
                   <th>Q1</th>
                   <th>Q2</th>
                   <th>Q3</th>
                 </tr>
                 <tr v-else>
-                  <th>Pos</th>
+                  <th class="pos-header">Pos</th>
                   <th>Driver</th>
                   <th>Status</th>
                   <th>Points</th>
@@ -151,14 +152,51 @@ const isPracticeType = (name) => {
                   v-for="driver in activeSession.results"
                   :key="driver.driver_number"
                 >
-                  <td class="pos-cell">{{ driver.pos }}</td>
+                  <td class="pos-cell">
+                    <div class="pos-cell-inner">
+                      <span class="pos-num">{{ driver.pos }}</span>
+                      <span
+                        v-if="
+                          !isPracticeType(activeSession.session_name) &&
+                          !isQualifyingType(activeSession.session_name) &&
+                          driver.positions_gained !== null &&
+                          driver.positions_gained !== undefined
+                        "
+                        class="pos-delta"
+                        :class="{
+                          gain: driver.positions_gained > 0,
+                          loss: driver.positions_gained < 0,
+                          even: driver.positions_gained === 0,
+                        }"
+                        :title="
+                          driver.grid_pos ? `Started P${driver.grid_pos}` : ''
+                        "
+                      >
+                        {{
+                          driver.positions_gained > 0
+                            ? `▲${driver.positions_gained}`
+                            : driver.positions_gained < 0
+                              ? `▼${Math.abs(driver.positions_gained)}`
+                              : "="
+                        }}
+                      </span>
+                    </div>
+                  </td>
                   <td class="driver-cell">
-                    <span
-                      class="team-stripe"
-                      :style="{ backgroundColor: '#' + driver.team_color }"
-                    ></span>
-                    <span class="abbr">{{ driver.abbreviation }}</span>
-                    <span class="full-name">{{ driver.full_name }}</span>
+                    <div class="driver-cell-inner">
+                      <span
+                        class="team-stripe"
+                        :style="{ backgroundColor: '#' + driver.team_color }"
+                      ></span>
+                      <span class="abbr">{{ driver.abbreviation }}</span>
+                      <span class="full-name">{{ driver.full_name }}</span>
+                      <span
+                        v-if="driver.has_fastest_lap"
+                        class="fl-pill"
+                        title="Fastest Lap of the Race"
+                        ><F1Icon name="stopwatch" :size="12" /> FL</span
+                      >
+                    </div>
                   </td>
 
                   <template v-if="isPracticeType(activeSession.session_name)">
@@ -169,14 +207,105 @@ const isPracticeType = (name) => {
                   <template
                     v-else-if="isQualifyingType(activeSession.session_name)"
                   >
-                    <td class="time-cell">{{ driver.q1 || "-" }}</td>
-                    <td class="time-cell">{{ driver.q2 || "-" }}</td>
-                    <td class="time-cell">{{ driver.q3 || "-" }}</td>
+                    <td
+                      class="time-cell"
+                      :class="{
+                        'eliminated-cell': !driver.q1 || driver.q1 === '-',
+                      }"
+                    >
+                      {{ driver.q1 || "-" }}
+                    </td>
+                    <td
+                      class="time-cell"
+                      :class="{
+                        'eliminated-cell': !driver.q2 || driver.q2 === '-',
+                      }"
+                    >
+                      {{ driver.q2 || "-" }}
+                    </td>
+                    <td
+                      class="time-cell"
+                      :class="{
+                        'eliminated-cell': !driver.q3 || driver.q3 === '-',
+                      }"
+                    >
+                      {{ driver.q3 || "-" }}
+                    </td>
                   </template>
 
                   <template v-else>
-                    <td class="status-cell">{{ driver.status }}</td>
-                    <td class="pts-cell">{{ driver.points }}</td>
+                    <td class="status-cell">
+                      <div class="status-cell-stack">
+                        <div
+                          v-if="
+                            ['dnf', 'dns', 'dsq'].includes(
+                              driver.status_category,
+                            )
+                          "
+                          class="status-retired"
+                        >
+                          <span
+                            class="status-badge"
+                            :class="'status-' + driver.status_category"
+                          >
+                            {{ driver.status_badge }}
+                          </span>
+                          <span
+                            class="status-detail-text"
+                            :title="driver.status_detail"
+                          >
+                            {{ driver.status_detail }}
+                          </span>
+                        </div>
+                        <div v-else class="status-finished">
+                          <span v-if="driver.finish_time" class="finish-time">{{
+                            driver.finish_time
+                          }}</span>
+                          <span v-else>{{ driver.status }}</span>
+                        </div>
+
+                        <div
+                          v-if="driver.penalties && driver.penalties.length > 0"
+                          class="steward-pills-row steward-pills-stack"
+                        >
+                          <span
+                            v-for="(p, pIdx) in driver.penalties"
+                            :key="pIdx"
+                            class="steward-pill penalty-chip"
+                            :class="
+                              p.badge === 'B&W Flag'
+                                ? 'is-bw-flag'
+                                : 'is-penalty'
+                            "
+                            :title="
+                              p.reason
+                                ? `${p.badge} — ${p.reason}`
+                                : p.message || p.badge
+                            "
+                          >
+                            <F1Icon
+                              :name="
+                                p.badge === 'B&W Flag' ? 'bw-flag' : 'alert'
+                              "
+                              :size="13"
+                            />
+                            <span>
+                              {{
+                                p.badge === "B&W Flag"
+                                  ? "Black & White Flag"
+                                  : `${p.badge} Penalty`
+                              }}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="pts-cell">
+                      <span v-if="driver.points > 0" class="pts-pill"
+                        >+{{ driver.points }}</span
+                      >
+                      <span v-else class="pts-zero">0</span>
+                    </td>
                   </template>
                 </tr>
               </tbody>
@@ -472,21 +601,186 @@ td {
   padding: 1rem;
   border-bottom: 1px solid var(--border-color);
   font-size: 0.95rem;
+  vertical-align: middle;
+}
+
+.pos-header {
+  width: 84px;
+  text-align: center;
 }
 
 .pos-cell {
-  width: 60px;
-  text-align: center;
+  width: 84px;
   font-weight: 800;
   color: var(--muted-text-color);
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pos-cell-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 62px;
+}
+
+.pos-num {
+  min-width: 22px;
+  text-align: right;
+}
+
+.pos-delta {
+  min-width: 34px;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+
+.pos-delta.gain {
+  color: #00d200;
+  background: rgba(0, 210, 0, 0.14);
+}
+
+.pos-delta.loss {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.14);
+}
+
+.pos-delta.even {
+  color: var(--muted-text-color);
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.fl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(179, 90, 209, 0.2);
+  color: #c468e2;
+  border: 1px solid rgba(179, 90, 209, 0.4);
+  line-height: 1.2;
+  margin-left: 4px;
+}
+
+.status-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.steward-pills-row,
+.steward-pills-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+}
+
+.steward-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: help;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.steward-pill.is-penalty {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.steward-pill.is-bw-flag {
+  background: var(--item-bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.status-retired {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  font-family: "JetBrains Mono", monospace;
+  line-height: 1.2;
+}
+
+.status-dnf {
+  background: rgba(235, 59, 53, 0.2);
+  color: #eb3b35;
+  border: 1px solid rgba(235, 59, 53, 0.4);
+}
+
+.status-dns {
+  background: rgba(142, 142, 147, 0.2);
+  color: #8e8e93;
+  border: 1px solid rgba(142, 142, 147, 0.4);
+}
+
+.status-dsq {
+  background: rgba(175, 82, 222, 0.2);
+  color: #af52de;
+  border: 1px solid rgba(175, 82, 222, 0.4);
+}
+
+.status-detail-text {
+  font-size: 0.8rem;
+  color: var(--muted-text-color);
+  font-weight: 600;
+}
+
+.finish-time {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+}
+
+.pts-pill {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 210, 0, 0.15);
+  color: #00d200;
+}
+
+.pts-zero {
+  opacity: 0.4;
   font-family: "JetBrains Mono", monospace;
 }
 
 .driver-cell {
+  vertical-align: middle;
+  min-width: 220px;
+}
+
+.driver-cell-inner {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 220px;
 }
 
 .team-stripe {
@@ -502,10 +796,16 @@ td {
   opacity: 0.5;
   font-size: 0.85rem;
 }
-.time-cell {
+.time-cell,
+.laps-cell {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.eliminated-cell {
+  opacity: 0.42;
 }
 
 .status-cell {
@@ -656,6 +956,11 @@ td {
   background: #facc15;
   color: #000;
 }
+.type.vsc {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
 .type.red-flag {
   background: #ef4444;
   color: #fff;
@@ -690,28 +995,36 @@ td {
 
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
-  .recap-container {
-    padding: 0;
+  .session-recap {
+    padding: 1rem;
+    border-radius: 12px;
   }
 
-  .session-header h2 {
-    font-size: 1.5rem;
+  .recap-header h1 {
+    font-size: 1.35rem;
   }
 
-  .session-header h3 {
+  .session-tabs {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .insight-card {
+    padding: 1rem;
+  }
+
+  .insight-card h4 {
+    font-size: 0.72rem;
+  }
+
+  .full-name {
     font-size: 0.9rem;
   }
 
-  .card-header h4 {
-    font-size: 0.9rem;
-  }
-
-  .driver-name {
-    font-size: 1.2rem;
-  }
-
-  .insight-value {
-    font-size: 1.5rem;
+  .value-highlight {
+    font-size: 0.85rem;
   }
 }
 </style>

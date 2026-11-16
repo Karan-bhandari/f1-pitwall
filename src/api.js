@@ -4,7 +4,7 @@ const CACHE_DURATION_HOURS = 24; // Default cache duration for current data
 const LIVE_WEEKEND_CACHE_HOURS = 0.25; // 15-minute TTL for active/recent (<48h) or incomplete race weekend data
 const ETERNAL_CACHE_HOURS = 99999; // A very long duration for static, historical data
 const RECENT_WINDOW_MS = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
-const CACHE_VERSION = 7; // Increment to invalidate all client-side caches
+const CACHE_VERSION = 14; // Increment to invalidate all client-side caches
 
 const eventDatesCache = new Map();
 
@@ -101,7 +101,15 @@ async function fetchAndCache(
   const versionedUrl = `${url}${separator}v=${CACHE_VERSION}`;
 
   // 1. Check for cached data using versioned URL
-  const cached = await db.api_cache.get(versionedUrl);
+  let cached = null;
+  try {
+    cached = await db.api_cache.get(versionedUrl);
+  } catch (err) {
+    console.warn(
+      `[Cache] Failed to read from IndexedDB for ${versionedUrl}:`,
+      err,
+    );
+  }
   if (cached) {
     const effectiveHours = getEffectiveCacheHours(
       cached.data,
@@ -125,11 +133,18 @@ async function fetchAndCache(
   const data = await res.json();
 
   // 3. Store the new data in the cache under versioned key
-  await db.api_cache.put({
-    url: versionedUrl,
-    data,
-    timestamp: Date.now(),
-  });
+  try {
+    await db.api_cache.put({
+      url: versionedUrl,
+      data,
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.warn(
+      `[Cache] Failed to write to IndexedDB for ${versionedUrl}:`,
+      err,
+    );
+  }
 
   return data;
 }
@@ -260,4 +275,23 @@ export async function getStandings(year) {
   if (!year) return null;
   const url = `${API_BASE_URL}/standings?year=${year}`;
   return await fetchAndCache(url, getCacheHoursForYear(year));
+}
+
+/**
+ * Gets the full season stats including driver cards, teammate battles,
+ * constructors summary, and round-by-round points progression.
+ */
+export async function getSeasonStats(year) {
+  if (!year) return null;
+  const url = `${API_BASE_URL}/season-stats?year=${year}`;
+  return await fetchAndCache(url, getCacheHoursForYear(year));
+}
+
+/**
+ * Gets all-time career statistics for a specific driver.
+ */
+export async function getDriverCareer(driverId) {
+  if (!driverId) return null;
+  const url = `${API_BASE_URL}/driver-career?driver_id=${encodeURIComponent(driverId)}`;
+  return await fetchAndCache(url, CACHE_DURATION_HOURS);
 }

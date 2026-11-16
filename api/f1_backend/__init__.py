@@ -16,14 +16,21 @@ except ImportError:
 # Use INFO (not DEBUG) and clamp HTTP/auth loggers to WARNING so Authorization
 # headers or OAuth payloads are never printed into logs.
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
-for _noisy_logger in ("urllib3", "requests", "requests_cache", "fastf1.internals.f1account"):
+for _noisy_logger in (
+    "urllib3",
+    "requests",
+    "requests_cache",
+    "fastf1.internals.f1account",
+):
     logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
 def _load_dotenv():
     """Load key=value pairs from root .env file into os.environ if not already set."""
-    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    env_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    )
     if not os.path.isfile(env_path):
         return
     try:
@@ -69,7 +76,9 @@ def create_app():
             fastf1.Cache.enable_cache(cache_path)
         if hasattr(fastf1, "set_auth_method"):
             fastf1.set_auth_method(os.environ.get("FASTF1_AUTH_METHOD", "password"))
-        has_creds = bool(os.environ.get("F1_USERNAME") and os.environ.get("F1_PASSWORD"))
+        has_creds = bool(
+            os.environ.get("F1_USERNAME") and os.environ.get("F1_PASSWORD")
+        )
         logger.info(f"FastF1 cache enabled (F1 credentials configured: {has_creds})")
 
     except Exception as e:
@@ -93,12 +102,13 @@ def create_app():
 
     # Import and register blueprints
     try:
-        from .blueprints import schedule, telemetry, recap, standings
+        from .blueprints import schedule, telemetry, recap, standings, stats
 
         app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
         app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
         app.register_blueprint(recap.recap_bp, url_prefix="/api")
         app.register_blueprint(standings.standings_bp, url_prefix="/api")
+        app.register_blueprint(stats.stats_bp, url_prefix="/api")
         logger.info("Blueprints registered successfully")
     except Exception as e:
         logger.error(f"Failed to register blueprints: {str(e)}")

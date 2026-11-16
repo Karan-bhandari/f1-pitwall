@@ -1,4 +1,6 @@
 <script setup>
+import F1Icon from "./F1Icon.vue";
+
 defineProps({
   // Data for dropdowns
   years: Array,
@@ -26,6 +28,10 @@ defineProps({
   driversError: String,
   isLoadingComparison: Boolean,
   viewMode: String,
+  hideYearSelect: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 defineEmits([
@@ -37,11 +43,12 @@ defineEmits([
   "update:selectedLap1",
   "update:selectedLap2",
   "update:viewMode",
+  "select-preset",
 ]);
 </script>
 
 <template>
-  <div class="form-group">
+  <div v-if="!hideYearSelect" class="form-group">
     <label for="year-select">Year:</label>
     <select
       id="year-select"
@@ -114,6 +121,36 @@ defineEmits([
   <div
     v-if="!isLoadingDrivers && drivers.length > 0 && viewMode === 'comparison'"
   >
+    <div class="preset-controls-bar">
+      <span class="preset-label">Quick Matchups:</span>
+      <div class="preset-buttons">
+        <button
+          type="button"
+          class="preset-btn"
+          @click="$emit('select-preset', 'p1_vs_p2')"
+          title="Compare P1 and P2 Leaders"
+        >
+          <F1Icon name="trophy" :size="14" /> P1 vs P2 (Leaders)
+        </button>
+        <button
+          type="button"
+          class="preset-btn"
+          @click="$emit('select-preset', 'teammate')"
+          title="Compare Teammates in Identical Machinery"
+        >
+          <F1Icon name="users" :size="14" /> Teammate Battle (Same Car)
+        </button>
+        <button
+          type="button"
+          class="preset-btn"
+          @click="$emit('select-preset', 'anchor_p1')"
+          title="Benchmark Driver 2 against P1 Leader"
+        >
+          <F1Icon name="stopwatch" :size="14" /> Benchmark vs P1
+        </button>
+      </div>
+    </div>
+
     <div class="driver-controls">
       <div class="driver-group">
         <div class="form-group">
@@ -126,7 +163,7 @@ defineEmits([
             <option value="">Select Driver 1</option>
             <option
               v-for="d in drivers.filter(
-                (d) => d.driver_number !== selectedDriver2,
+                (d) => String(d.driver_number) !== String(selectedDriver2),
               )"
               :key="d.driver_number"
               :value="d.driver_number"
@@ -165,7 +202,7 @@ defineEmits([
             <option value="">Select Driver 2</option>
             <option
               v-for="d in drivers.filter(
-                (d) => d.driver_number !== selectedDriver1,
+                (d) => String(d.driver_number) !== String(selectedDriver1),
               )"
               :key="d.driver_number"
               :value="d.driver_number"
@@ -282,6 +319,54 @@ select:disabled {
   box-shadow: 0 4px 15px var(--accent-color);
 }
 
+.preset-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--item-bg-color);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.preset-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted-text-color);
+  white-space: nowrap;
+}
+
+.preset-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.preset-btn {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 6px;
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.preset-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--accent-color);
+  transform: translateY(-1px);
+}
+
 .driver-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -316,6 +401,24 @@ select:disabled {
 
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
+  .preset-controls-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+    padding: 1rem;
+  }
+
+  .preset-buttons {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .preset-btn {
+    width: 100%;
+    text-align: center;
+    padding: 0.65rem 0.75rem;
+  }
+
   .driver-controls {
     grid-template-columns: 1fr;
     gap: 1rem;

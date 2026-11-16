@@ -140,7 +140,15 @@ def get_drivers():
                         f"{base['full_name']} ({base['abbreviation']})"
                     )
                     base["driver_key"] = base["abbreviation"]
+                    base["position"] = int(driver_info.get("position", idx + 1))
                     drivers.append(base)
+            drivers.sort(
+                key=lambda d: (
+                    d.get("position") is None,
+                    d.get("position") if d.get("position") is not None else 99,
+                    d.get("driver_number", ""),
+                )
+            )
             return jsonify({"drivers": drivers}), 200
 
         session = fastf1.get_session(year, event_key, session_name)
@@ -149,6 +157,12 @@ def get_drivers():
         drivers = []
         for driver_number in session.drivers:
             driver_info = session.get_driver(driver_number)
+            pos_val = (
+                driver_info.get("Position")
+                if hasattr(driver_info, "get")
+                else getattr(driver_info, "Position", None)
+            )
+            pos = int(pos_val) if (pos_val is not None and pd.notna(pos_val)) else None
             drivers.append(
                 {
                     "driver_number": str(driver_number),
@@ -161,8 +175,17 @@ def get_drivers():
                     "team_color": resolve_team_color(driver_info),
                     "display_name": f"{driver_info['FullName']} ({driver_info['Abbreviation']})",
                     "driver_key": str(driver_info["Abbreviation"]),
+                    "position": pos,
                 }
             )
+
+        drivers.sort(
+            key=lambda d: (
+                d.get("position") is None,
+                d.get("position") if d.get("position") is not None else 99,
+                d.get("driver_number", ""),
+            )
+        )
 
         return jsonify({"drivers": drivers}), 200
     except Exception as e:

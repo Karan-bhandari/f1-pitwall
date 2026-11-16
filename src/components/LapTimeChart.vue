@@ -1,13 +1,16 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
+import Chart from "chart.js/auto";
 import { adjustColor, formatLapTime, TYRE_ICONS } from "../utils";
-
-// Chart.js is loaded from a CDN in index.html
 
 const props = defineProps({
   raceComparison: Object,
   isLoading: Boolean,
   error: String,
+  theme: {
+    type: String,
+    default: "dark",
+  },
 });
 
 let chartInstance = null;
@@ -238,6 +241,13 @@ const renderChart = (data) => {
       tooltip.options.padding + "px " + tooltip.options.padding + "px";
   };
 
+  const isDark = props.theme === "dark";
+  const tickColor = isDark ? "#9898a6" : "#555560";
+  const titleColor = isDark ? "#e2e2e8" : "#1e1e24";
+  const gridColor = isDark
+    ? "rgba(255, 255, 255, 0.08)"
+    : "rgba(0, 0, 0, 0.08)";
+
   chartInstance = new Chart(ctx, {
     type: "line",
     data: {
@@ -275,19 +285,26 @@ const renderChart = (data) => {
       },
       scales: {
         x: {
-          title: { display: true, text: "Lap Number" },
+          title: { display: true, text: "Lap Number", color: titleColor },
+          ticks: { color: tickColor },
+          grid: { color: gridColor },
         },
         y: {
-          title: { display: true, text: "Lap Time" },
+          title: { display: true, text: "Lap Time", color: titleColor },
           min: yMin, // Set Y-axis min
           max: yMax, // Set Y-axis max (clipping pit stops)
           ticks: {
+            color: tickColor,
             maxTicksLimit: 15, // Increase number of ticks for the taller 600px height
             callback: (value) => formatLapTime(value),
           },
+          grid: { color: gridColor },
         },
       },
       plugins: {
+        legend: {
+          labels: { color: titleColor },
+        },
         tooltip: {
           enabled: false,
           external: externalTooltipHandler,
@@ -308,6 +325,15 @@ watch(
     }
   },
   { deep: true },
+);
+
+watch(
+  () => props.theme,
+  () => {
+    if (props.raceComparison) {
+      setTimeout(() => renderChart(props.raceComparison), 0);
+    }
+  },
 );
 
 onBeforeUnmount(() => {

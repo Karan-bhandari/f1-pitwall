@@ -1,12 +1,18 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch, computed } from "vue";
-// Chart.js is loaded from a CDN in index.html, so it's globally available.
+import Chart from "chart.js/auto";
+import { adjustColor } from "../utils";
+import F1Icon from "./F1Icon.vue";
 
 const props = defineProps({
   telemetryData: Object,
   isLoading: Boolean,
   error: String,
   year: Number,
+  theme: {
+    type: String,
+    default: "dark",
+  },
 });
 
 // DRS was introduced in 2011 and is currently planned to be replaced by
@@ -27,11 +33,19 @@ const createChart = (
   const ctx = document.getElementById(canvasId);
   if (!ctx) return null;
 
+  const isDark = props.theme === "dark";
+  const tickColor = isDark ? "#9898a6" : "#555560";
+  const titleColor = isDark ? "#e2e2e8" : "#1e1e24";
+  const gridColor = isDark
+    ? "rgba(255, 255, 255, 0.08)"
+    : "rgba(0, 0, 0, 0.08)";
+
   const plugins = [
     {
       title: {
         display: true,
         text: label,
+        color: titleColor,
         font: { size: 16 },
         align: "start",
         padding: { top: 10, bottom: 10 },
@@ -43,6 +57,7 @@ const createChart = (
       },
       legend: {
         display: canvasId === "speed-chart",
+        labels: { color: titleColor },
         weight: 3000,
         onClick: (e, legendItem, legend) => {
           const index = legendItem.datasetIndex;
@@ -71,8 +86,8 @@ const createChart = (
 
         ctx.save();
         ctx.textAlign = "center";
-        ctx.fillStyle = "gray";
-        ctx.strokeStyle = "gray";
+        ctx.fillStyle = tickColor;
+        ctx.strokeStyle = gridColor;
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 2]);
 
@@ -105,7 +120,7 @@ const createChart = (
     });
   }
 
-  const yTicks = {};
+  const yTicks = { color: tickColor };
   if (canvasId === "rpm-chart") {
     yTicks.callback = function (value) {
       return value / 1000 + "k";
@@ -141,12 +156,12 @@ const createChart = (
           display:
             (canvasId === "rpm-chart" && !hasDRS.value) ||
             canvasId === "drs-chart",
-          title: { display: true, text: "Distance (m)" },
-          ticks: { maxTicksLimit: 10 },
+          title: { display: true, text: "Distance (m)", color: titleColor },
+          ticks: { maxTicksLimit: 10, color: tickColor },
           grid: { display: false },
         },
         y: {
-          title: { display: true, text: yAxisLabel },
+          title: { display: true, text: yAxisLabel, color: titleColor },
           min: yMin,
           suggestedMax: yMax,
           ticks: yTicks,
@@ -154,7 +169,7 @@ const createChart = (
           afterFit: (scale) => {
             scale.width = 60;
           },
-          grid: { color: "rgba(200, 200, 200, 0.2)" },
+          grid: { color: gridColor },
         },
       },
       elements: { point: { radius: 0 } },
@@ -289,20 +304,6 @@ const renderCharts = (data) => {
   }
 };
 
-function adjustColor(color, amount) {
-  return (
-    "#" +
-    color
-      .replace(/^#/, "")
-      .replace(/../g, (color) =>
-        (
-          "0" +
-          Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)
-        ).substr(-2),
-      )
-  );
-}
-
 watch(
   () => props.telemetryData,
   (newData) => {
@@ -316,6 +317,15 @@ watch(
   { deep: true },
 );
 
+watch(
+  () => props.theme,
+  () => {
+    if (props.telemetryData) {
+      setTimeout(() => renderCharts(props.telemetryData), 0);
+    }
+  },
+);
+
 onBeforeUnmount(() => {
   chartInstances.forEach((chart) => chart.destroy());
   chartInstances = [];
@@ -325,7 +335,10 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <div v-if="year < 2018" class="no-telemetry-state">
-      <h3>⚠️ TELEMETRY NOT AVAILABLE</h3>
+      <h3>
+        <F1Icon name="alert" :size="20" />
+        <span>TELEMETRY NOT AVAILABLE</span>
+      </h3>
       <p>
         High-resolution telemetry data is only available for seasons from 2018
         onwards.
@@ -371,6 +384,8 @@ onBeforeUnmount(() => {
   margin-top: 0;
   border: none;
   justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
   display: flex;
 }
 .no-telemetry-state p {

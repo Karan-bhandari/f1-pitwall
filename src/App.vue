@@ -1,443 +1,162 @@
 <script setup>
-import { ref, watch, onMounted, shallowRef, computed } from "vue";
-import F1Controls from "./components/F1Controls.vue";
-import TelemetryChart from "./components/TelemetryChart.vue";
-import LapTimeChart from "./components/LapTimeChart.vue";
-import RaceSummary from "./components/RaceSummary.vue";
-import QualifyingSummary from "./components/QualifyingSummary.vue";
-import SessionRecap from "./components/SessionRecap.vue";
-import SeasonOverview from "./components/SeasonOverview.vue";
+import { ref, watch, onMounted } from "vue";
+import { RouterLink, RouterView, useRoute } from "vue-router";
 import { Analytics } from "@vercel/analytics/vue";
-import {
-  getEvents,
-  getSessions,
-  getDrivers,
-  getRaceComparison,
-  getLapTelemetry,
-  getRaceSummary,
-} from "./api.js";
+import F1Icon from "@/components/F1Icon.vue";
+
+const route = useRoute();
 
 // --- Theme State ---
 const theme = ref("light");
 const toggleTheme = () => {
   theme.value = theme.value === "light" ? "dark" : "light";
+  localStorage.setItem("f1_pitwall_theme", theme.value);
+  document.documentElement.setAttribute("data-theme", theme.value);
 };
 
-// --- Data State ---
-const year = ref(new Date().getFullYear());
+// --- Season State ---
 const currentYear = new Date().getFullYear();
+const year = ref(currentYear);
 const years = Array.from(
   { length: currentYear - 1950 + 1 },
   (_, i) => currentYear - i,
 );
-const events = ref([]);
-const selectedEventKey = ref("");
-const isLoadingEvents = ref(false);
-const eventsError = ref(null);
-const sessions = ref([]);
-const selectedSessionName = ref("");
-const isLoadingSessions = ref(false);
-const sessionsError = ref(null);
-const drivers = ref([]);
-const selectedDriver1 = ref("");
-const selectedDriver2 = ref("");
-const isLoadingDrivers = ref(false);
-const driversError = ref(null);
-const raceComparison = shallowRef(null);
-const isLoadingComparison = ref(false);
-const comparisonError = ref(null);
 
-// --- View State ---
-const viewMode = ref("summary"); // 'summary', 'comparison', or 'recap'
-const summaryData = shallowRef(null);
-const isLoadingSummary = ref(false);
-const summaryError = ref(null);
-
-const isQualifyingSession = computed(() => {
-  const name = selectedSessionName.value?.toLowerCase() || "";
-  return (
-    name.includes("qualifying") ||
-    name.includes("shootout") ||
-    name.includes("qualy")
-  );
-});
-
-// --- Telemetry State ---
-const selectedLap1 = ref(null);
-const selectedLap2 = ref(null);
-const telemetryData = shallowRef(null);
-const isLoadingTelemetry = ref(false);
-const telemetryError = ref(null);
-
-// --- State Management ---
-const resetState = (level) => {
-  // level 0: Reset everything (year change)
-  if (level <= 0) {
-    events.value = [];
-    selectedEventKey.value = "";
-  }
-  // level 1: Reset from event down (event change)
-  if (level <= 1) {
-    sessions.value = [];
-    selectedSessionName.value = "";
-  }
-  // level 2: Reset from session down (session change)
-  if (level <= 2) {
-    drivers.value = [];
-    selectedDriver1.value = "";
-    selectedDriver2.value = "";
-  }
-  // level 3: Reset comparison and telemetry (driver change)
-  if (level <= 3) {
-    raceComparison.value = null;
-    selectedLap1.value = null;
-    selectedLap2.value = null;
-    telemetryData.value = null;
-    summaryData.value = null;
-  }
-};
-
-const handleQuickLapSelect = async ({ driverNumber, lapNumber }) => {
-  // Switch to comparison mode to show telemetry
-  viewMode.value = "comparison";
-
-  // Set the first driver as the selected one from summary
-  selectedDriver1.value = driverNumber;
-  selectedLap1.value = lapNumber;
-
-  // If driver 2 isn't set, set it to the same or leave it
-  if (!selectedDriver2.value) {
-    selectedDriver2.value = driverNumber;
-    selectedLap2.value = lapNumber;
-  }
-};
-
-// --- API Fetching ---
-const fetchRaceSummary = async () => {
-  if (
-    !selectedSessionName.value ||
-    selectedSessionName.value === "Weekend Recap" ||
-    viewMode.value !== "summary"
-  ) {
-    return;
-  }
-  isLoadingSummary.value = true;
-  summaryError.value = null;
-  try {
-    const data = await getRaceSummary(
-      year.value,
-      selectedEventKey.value,
-      selectedSessionName.value,
-    );
-    summaryData.value = data;
-  } catch (e) {
-    console.error("Failed to fetch race summary:", e);
-    summaryError.value = "Could not load session summary.";
-  } finally {
-    isLoadingSummary.value = false;
-  }
-};
-
-const fetchEvents = async () => {
-  isLoadingEvents.value = true;
-  eventsError.value = null;
-  resetState(0);
-
-  try {
-    const data = await getEvents(year.value);
-    events.value = data.events || [];
-  } catch (e) {
-    console.error("Failed to fetch events:", e);
-    eventsError.value = "Could not load events. Is the backend running?";
-  } finally {
-    isLoadingEvents.value = false;
-  }
-};
-
-const fetchSessions = async () => {
-  if (!selectedEventKey.value) {
-    resetState(1);
-    return;
-  }
-  isLoadingSessions.value = true;
-  sessionsError.value = null;
-  resetState(1);
-  try {
-    const data = await getSessions(year.value, selectedEventKey.value);
-    const sessionList = data.sessions || [];
-    // Add Weekend Recap as the default first option
-    sessions.value = [{ name: "Weekend Recap" }, ...sessionList];
-    selectedSessionName.value = "Weekend Recap";
-    viewMode.value = "recap";
-  } catch (e) {
-    console.error("Failed to fetch sessions:", e);
-    sessionsError.value = "Could not load sessions.";
-  } finally {
-    isLoadingSessions.value = false;
-  }
-};
-
-const fetchDrivers = async () => {
-  if (
-    !selectedSessionName.value ||
-    selectedSessionName.value === "Weekend Recap"
-  ) {
-    resetState(2);
-    return;
-  }
-  isLoadingDrivers.value = true;
-  driversError.value = null;
-  resetState(2);
-  try {
-    const data = await getDrivers(
-      year.value,
-      selectedEventKey.value,
-      selectedSessionName.value,
-    );
-    drivers.value = data.drivers || [];
-  } catch (e) {
-    console.error("Failed to fetch drivers:", e);
-    driversError.value = "Could not load drivers.";
-  } finally {
-    isLoadingDrivers.value = false;
-  }
-};
-
-const fetchSessionDataSequentially = async () => {
-  // Prevent fastf1 SQLite cache lock by fetching drivers then summary
-  await fetchDrivers();
-  if (viewMode.value === "summary") {
-    await fetchRaceSummary();
-  }
-};
-
-const fetchRaceComparison = async () => {
-  if (!selectedDriver1.value || !selectedDriver2.value) {
-    resetState(3);
-    return;
-  }
-  isLoadingComparison.value = true;
-  comparisonError.value = null;
-  telemetryData.value = null;
-
-  try {
-    const data = await getRaceComparison(
-      year.value,
-      selectedEventKey.value,
-      selectedSessionName.value,
-      selectedDriver1.value,
-      selectedDriver2.value,
-    );
-    raceComparison.value = data;
-
-    // Find fastest laps to set defaults
-    if (data && data.driver1 && data.driver1.laps) {
-      const validLaps1 = data.driver1.laps.filter(
-        (l) => l.lap_time_seconds !== null,
-      );
-      if (validLaps1.length > 0) {
-        const fastest1 = validLaps1.reduce((prev, curr) =>
-          prev.lap_time_seconds < curr.lap_time_seconds ? prev : curr,
-        );
-        selectedLap1.value = fastest1.lap_number;
+watch(
+  () => route.query.year,
+  (newYear) => {
+    if (newYear) {
+      const parsed = Number(newYear);
+      if (!isNaN(parsed) && years.includes(parsed) && parsed !== year.value) {
+        year.value = parsed;
       }
     }
-    if (data && data.driver2 && data.driver2.laps) {
-      const validLaps2 = data.driver2.laps.filter(
-        (l) => l.lap_time_seconds !== null,
-      );
-      if (validLaps2.length > 0) {
-        const fastest2 = validLaps2.reduce((prev, curr) =>
-          prev.lap_time_seconds < curr.lap_time_seconds ? prev : curr,
-        );
-        selectedLap2.value = fastest2.lap_number;
-      }
-    }
-  } catch (e) {
-    console.error("Failed to fetch race comparison:", e);
-    comparisonError.value = "Could not load race comparison data.";
-  } finally {
-    isLoadingComparison.value = false;
-  }
-};
+  },
+  { immediate: true },
+);
 
-const fetchTelemetry = async () => {
-  if (
-    !selectedDriver1.value ||
-    !selectedDriver2.value ||
-    !selectedLap1.value ||
-    !selectedLap2.value
-  ) {
-    return;
-  }
-
-  isLoadingTelemetry.value = true;
-  telemetryError.value = null;
-
-  try {
-    const data = await getLapTelemetry(
-      year.value,
-      selectedEventKey.value,
-      selectedSessionName.value,
-      selectedDriver1.value,
-      selectedDriver2.value,
-      selectedLap1.value,
-      selectedLap2.value,
-    );
-    telemetryData.value = data;
-  } catch (e) {
-    console.error("Failed to fetch telemetry:", e);
-    telemetryError.value = "Could not load telemetry data.";
-  } finally {
-    isLoadingTelemetry.value = false;
-  }
-};
-
-// --- Watchers and Lifecycle ---
 watch(theme, (newTheme) => {
   document.documentElement.setAttribute("data-theme", newTheme);
 });
-watch(year, fetchEvents);
-watch(selectedEventKey, fetchSessions);
-
-watch(selectedSessionName, (newName) => {
-  if (newName === "Weekend Recap") {
-    viewMode.value = "recap";
-  } else if (viewMode.value === "recap") {
-    viewMode.value = "summary";
-  }
-  fetchSessionDataSequentially();
-});
-
-watch(viewMode, (newMode) => {
-  if (newMode === "summary" && selectedSessionName.value !== "Weekend Recap") {
-    // Only fetch if we don't already have it
-    if (!summaryData.value) {
-      fetchRaceSummary();
-    }
-  }
-});
-
-watch([selectedDriver1, selectedDriver2], fetchRaceComparison);
-watch([selectedLap1, selectedLap2], fetchTelemetry);
 
 onMounted(() => {
-  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-  theme.value = mediaQuery.matches ? "dark" : "light";
-  mediaQuery.addEventListener("change", (e) => {
-    theme.value = e.matches ? "dark" : "light";
-  });
+  const savedTheme = localStorage.getItem("f1_pitwall_theme");
+  if (savedTheme === "light" || savedTheme === "dark") {
+    theme.value = savedTheme;
+  } else {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    theme.value = mediaQuery.matches ? "dark" : "light";
+    mediaQuery.addEventListener("change", (e) => {
+      if (!localStorage.getItem("f1_pitwall_theme")) {
+        theme.value = e.matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", theme.value);
+      }
+    });
+  }
   document.documentElement.setAttribute("data-theme", theme.value);
-  fetchEvents();
 });
 </script>
 
 <template>
   <div id="app-container">
     <Analytics />
-    <button class="theme-toggle" @click="toggleTheme" title="Toggle Theme">
-      {{ theme === "light" ? "🌙" : "☀️" }}
-    </button>
-    <h2>F1 PitWall</h2>
 
-    <F1Controls
-      :years="years"
-      v-model:year="year"
-      :events="events"
-      v-model:selectedEventKey="selectedEventKey"
-      :isLoadingEvents="isLoadingEvents"
-      :eventsError="eventsError"
-      :sessions="sessions"
-      v-model:selectedSessionName="selectedSessionName"
-      :isLoadingSessions="isLoadingSessions"
-      :sessionsError="sessionsError"
-      :drivers="drivers"
-      v-model:selectedDriver1="selectedDriver1"
-      v-model:selectedDriver2="selectedDriver2"
-      :isLoadingDrivers="isLoadingDrivers"
-      :driversError="driversError"
-      :lapsDriver1="raceComparison?.driver1?.laps || []"
-      :lapsDriver2="raceComparison?.driver2?.laps || []"
-      v-model:selectedLap1="selectedLap1"
-      v-model:selectedLap2="selectedLap2"
-      :isLoadingComparison="isLoadingComparison"
-      v-model:viewMode="viewMode"
-    />
+    <!-- App Shell Header Bar -->
+    <header class="app-header">
+      <div class="header-brand-nav">
+        <RouterLink to="/" class="brand-link">
+          <h1 class="brand-title">F1 PitWall</h1>
+        </RouterLink>
 
-    <!-- Season Overview: shown when no event is selected -->
-    <SeasonOverview v-if="!selectedEventKey" :year="Number(year)" />
+        <nav class="nav-tabs" aria-label="Main Navigation">
+          <RouterLink to="/" class="nav-tab" exact-active-class="active">
+            Season Hub
+          </RouterLink>
+          <RouterLink to="/race" class="nav-tab" active-class="active">
+            Race PitWall
+          </RouterLink>
+          <RouterLink to="/drivers" class="nav-tab" active-class="active">
+            Drivers
+          </RouterLink>
+          <RouterLink to="/constructors" class="nav-tab" active-class="active">
+            Constructors
+          </RouterLink>
+        </nav>
+      </div>
 
-    <!-- Event-specific views: shown once an event is selected -->
-    <template v-else-if="viewMode === 'recap'">
-      <SessionRecap :year="Number(year)" :eventKey="selectedEventKey" />
-    </template>
+      <div class="header-controls">
+        <div class="global-year-wrapper">
+          <label for="global-year-select" class="year-label">Season:</label>
+          <select
+            id="global-year-select"
+            :value="year"
+            @change="year = Number($event.target.value)"
+          >
+            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+          </select>
+        </div>
 
-    <template v-else-if="viewMode === 'comparison'">
-      <LapTimeChart
-        :raceComparison="raceComparison"
-        :isLoading="isLoadingComparison"
-        :error="comparisonError"
-      />
+        <button
+          class="theme-toggle"
+          @click="toggleTheme"
+          title="Toggle Theme"
+          aria-label="Toggle Theme"
+        >
+          <F1Icon :name="theme === 'light' ? 'moon' : 'sun'" :size="18" />
+        </button>
+      </div>
+    </header>
 
-      <h3 v-if="telemetryData">Telemetry Analysis</h3>
-      <TelemetryChart
-        :telemetryData="telemetryData"
-        :isLoading="isLoadingTelemetry"
-        :error="telemetryError"
-        :year="Number(year)"
-      />
-    </template>
-    <template v-else-if="viewMode === 'summary' && summaryData">
-      <QualifyingSummary
-        v-if="isQualifyingSession"
-        :summaryData="summaryData"
-        :isLoading="isLoadingSummary"
-        :error="summaryError"
-        :theme="theme"
-        :year="Number(year)"
-        @select-lap="handleQuickLapSelect"
-      />
-      <RaceSummary
-        v-else
-        :summaryData="summaryData"
-        :isLoading="isLoadingSummary"
-        :error="summaryError"
-        :year="Number(year)"
-      />
-    </template>
+    <!-- Page Content View -->
+    <main class="app-main">
+      <RouterView v-slot="{ Component }">
+        <component
+          :is="Component"
+          :year="Number(year)"
+          :years="years"
+          :theme="theme"
+          @update:year="(val) => (year = Number(val))"
+        />
+      </RouterView>
+    </main>
   </div>
 </template>
 
 <style>
 :root,
 html[data-theme="light"] {
-  --bg-color: #f8f9fa;
+  --bg-color: #f4f4f6;
   --card-bg-color: #ffffff;
-  --text-color: #0f1115;
-  --muted-text-color: #5a636e;
-  --primary-color: #e10600; /* Official F1 Red */
+  --text-color: #111116;
+  --muted-text-color: #555560;
+  --primary-color: #e10600;
   --accent-color: rgba(225, 6, 0, 0.08);
-  --border-color: #d1d5db;
+  --border-color: #d0d0d7;
   --input-bg-color: #ffffff;
-  --item-bg-color: #f3f4f6;
-  --shadow-color: rgba(0, 0, 0, 0.06);
+  --item-bg-color: #eaeaef;
+  --shadow-color: rgba(17, 17, 22, 0.07);
 }
 
 html[data-theme="dark"] {
-  --bg-color: #0b0b0b;
-  --card-bg-color: #161616;
-  --text-color: #f8f9fa;
-  --muted-text-color: #adb5bd;
+  --bg-color: #0a0a0e;
+  --card-bg-color: #15151e;
+  --text-color: #f1f1f6;
+  --muted-text-color: #9898a6;
   --primary-color: #ff1801;
   --accent-color: rgba(255, 24, 1, 0.15);
-  --border-color: #2c2c2c;
-  --input-bg-color: #1f1f1f;
-  --item-bg-color: #1a1a1a;
-  --shadow-color: rgba(0, 0, 0, 0.5);
+  --border-color: #2a2a3c;
+  --input-bg-color: #1a1a24;
+  --item-bg-color: #1e1e2a;
+  --shadow-color: rgba(0, 0, 0, 0.55);
 }
 
 * {
   box-sizing: border-box;
+}
+
+.mono {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 body {
@@ -463,7 +182,7 @@ body {
   max-width: 1400px;
   margin: 0 auto;
   background: var(--card-bg-color);
-  padding: 2.5rem;
+  padding: 2rem 2.5rem;
   border-radius: 12px;
   box-shadow: 0 8px 30px var(--shadow-color);
   border: 1px solid var(--border-color);
@@ -473,22 +192,123 @@ body {
     border-color 0.3s ease;
 }
 
+/* Header Bar */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.header-brand-nav {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.brand-link {
+  text-decoration: none;
+  padding: 0;
+  background-color: transparent;
+}
+
+.brand-link:hover {
+  background-color: transparent;
+}
+
+.brand-title {
+  font-size: 1.6rem;
+  font-weight: 900;
+  margin: 0;
+  color: var(--primary-color);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-tab {
+  text-decoration: none;
+  color: var(--muted-text-color);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 6px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.nav-tab:hover {
+  color: var(--text-color);
+  background-color: var(--item-bg-color);
+}
+
+.nav-tab.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  background-color: var(--accent-color);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.global-year-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.year-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted-text-color);
+}
+
+#global-year-select {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--input-bg-color);
+  color: var(--text-color);
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+#global-year-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
 .theme-toggle {
-  position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
   background: var(--item-bg-color);
   border: 1px solid var(--border-color);
   color: var(--text-color);
   cursor: pointer;
   border-radius: 8px;
-  width: 44px;
-  height: 44px;
-  font-size: 1.2rem;
+  width: 40px;
+  height: 40px;
+  font-size: 1.1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .theme-toggle:hover {
@@ -497,30 +317,8 @@ body {
   transform: scale(1.05);
 }
 
-h2 {
-  font-weight: 800;
-  margin-top: 0;
-  color: var(--primary-color);
-  text-align: center;
-  margin-bottom: 3rem;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-}
-
-h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-top: 2.5rem;
-  color: var(--text-color);
-  border-left: 4px solid var(--primary-color);
-  padding-left: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.summary-placeholder {
-  text-align: center;
-  padding: 3rem;
-  color: var(--muted-text-color);
+.app-main {
+  width: 100%;
 }
 
 /* --- Mobile Responsiveness --- */
@@ -535,23 +333,51 @@ h3 {
     box-shadow: none;
   }
 
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .header-brand-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+    width: 100%;
+  }
+
+  .brand-title {
+    font-size: 1.35rem;
+  }
+
+  .nav-tabs {
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.35rem;
+  }
+
+  .nav-tab {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  .header-controls {
+    justify-content: space-between;
+    width: 100%;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
+  }
+
   .theme-toggle {
-    top: 1rem;
-    right: 1rem;
     width: 36px;
     height: 36px;
     font-size: 1rem;
-  }
-
-  h2 {
-    margin-bottom: 1.5rem;
-    font-size: 1.5rem;
-  }
-
-  h3 {
-    font-size: 1.1rem;
-    margin-top: 2rem;
-    margin-bottom: 1rem;
   }
 }
 </style>
