@@ -3,6 +3,13 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from "vue";
 import { RouterLink } from "vue-router";
 import Chart from "chart.js/auto";
 import { getSeasonStats } from "../api";
+import {
+  formatOffsetLabel,
+  formatSessionDateTime,
+  getLocalTimezoneLabel,
+  setTimeZoneMode,
+  timeZoneMode,
+} from "../utils";
 import SeasonOverview from "../components/SeasonOverview.vue";
 import F1Icon from "../components/F1Icon.vue";
 
@@ -280,6 +287,33 @@ onBeforeUnmount(() => {
 });
 
 // --- Formatting Helpers ---
+const localTzLabel = getLocalTimezoneLabel();
+
+const nextRoundHasOffset = computed(() =>
+  Boolean(seasonStats.value?.next_round?.gmt_offset),
+);
+
+const effectiveNextTzMode = computed(() =>
+  timeZoneMode.value === "track" && nextRoundHasOffset.value
+    ? "track"
+    : "local",
+);
+
+const nextRoundPlaceLabel = computed(
+  () => seasonStats.value?.next_round?.location || "Track Time",
+);
+
+const nextRoundTrackTzLabel = computed(
+  () => formatOffsetLabel(seasonStats.value?.next_round?.gmt_offset) || "Track",
+);
+
+function formatNextSessionTime(sessionItem) {
+  return formatSessionDateTime(sessionItem?.utc || sessionItem?.local, {
+    mode: effectiveNextTzMode.value,
+    gmtOffset: seasonStats.value?.next_round?.gmt_offset,
+  });
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
   try {
@@ -455,6 +489,61 @@ function formatDate(dateStr) {
                 <span class="item-label">Scheduled Date</span>
                 <span class="item-value mono">
                   {{ formatDate(seasonStats.next_round.date) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Weekend Sessions Schedule with Local vs. Track Timezone Converter -->
+          <div
+            v-if="seasonStats.next_round.sessions?.length"
+            class="weekend-schedule-box"
+          >
+            <div class="weekend-schedule-header">
+              <span class="schedule-heading">Weekend Schedule</span>
+              <div
+                v-if="nextRoundHasOffset"
+                class="tz-toggle"
+                role="group"
+                aria-label="Schedule timezone"
+              >
+                <button
+                  type="button"
+                  class="tz-btn"
+                  :class="{ active: effectiveNextTzMode === 'local' }"
+                  @click="setTimeZoneMode('local')"
+                  :title="`Show schedule in your timezone (${localTzLabel})`"
+                >
+                  My Time
+                </button>
+                <button
+                  type="button"
+                  class="tz-btn"
+                  :class="{ active: effectiveNextTzMode === 'track' }"
+                  @click="setTimeZoneMode('track')"
+                  :title="`Show schedule in ${nextRoundPlaceLabel} local time (${nextRoundTrackTzLabel})`"
+                >
+                  {{ nextRoundPlaceLabel }}
+                </button>
+              </div>
+            </div>
+
+            <div class="weekend-sessions-list">
+              <div
+                v-for="sess in seasonStats.next_round.sessions"
+                :key="sess.name"
+                class="weekend-session-row"
+                :class="{
+                  'is-key-session':
+                    sess.name === 'Race' ||
+                    sess.name === 'Qualifying' ||
+                    sess.name === 'Sprint',
+                }"
+              >
+                <span class="sess-name">{{ sess.name }}</span>
+                <span class="sess-datetime mono">
+                  {{ formatNextSessionTime(sess).day }} ·
+                  {{ formatNextSessionTime(sess).time }}
                 </span>
               </div>
             </div>
@@ -836,6 +925,97 @@ function formatDate(dateStr) {
   line-height: 1.25;
   overflow-wrap: break-word;
   margin-top: 0.15rem;
+}
+
+.weekend-schedule-box {
+  margin-top: 0.75rem;
+  background: var(--item-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.weekend-schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.schedule-heading {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted-text-color);
+}
+
+.tz-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--card-bg-color);
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.tz-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted-text-color);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tz-btn:hover {
+  color: var(--text-color);
+}
+
+.tz-btn.active {
+  background: var(--accent-color);
+  color: var(--primary-color);
+}
+
+.weekend-sessions-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.weekend-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  padding: 0.22rem 0;
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.weekend-session-row.is-key-session .sess-name {
+  font-weight: 800;
+  color: var(--text-color);
+}
+
+.sess-name {
+  color: var(--muted-text-color);
+  font-weight: 600;
+}
+
+.sess-datetime {
+  color: var(--text-color);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 /* --- Championship Progression Section --- */

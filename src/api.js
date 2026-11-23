@@ -4,7 +4,7 @@ const CACHE_DURATION_HOURS = 24; // Default cache duration for current data
 const LIVE_WEEKEND_CACHE_HOURS = 0.25; // 15-minute TTL for active/recent (<48h) or incomplete race weekend data
 const ETERNAL_CACHE_HOURS = 99999; // A very long duration for static, historical data
 const RECENT_WINDOW_MS = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
-const CACHE_VERSION = 14; // Increment to invalidate all client-side caches
+const CACHE_VERSION = 15; // Increment to invalidate all client-side caches
 
 const eventDatesCache = new Map();
 
@@ -294,4 +294,44 @@ export async function getDriverCareer(driverId) {
   if (!driverId) return null;
   const url = `${API_BASE_URL}/driver-career?driver_id=${encodeURIComponent(driverId)}`;
   return await fetchAndCache(url, CACHE_DURATION_HOURS);
+}
+
+/**
+ * Gets lightweight live/recent session status (bypasses IndexedDB).
+ */
+export async function getLiveStatus({ signal } = {}) {
+  const res = await fetch(`${API_BASE_URL}/live/status`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP error! status: ${res.status}`);
+  }
+  return await res.json();
+}
+
+/**
+ * Gets the latest live timing snapshot (bypasses IndexedDB).
+ */
+export async function getLiveSnapshot({ signal } = {}) {
+  const res = await fetch(`${API_BASE_URL}/live/snapshot`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) {
+    let errBody = null;
+    try {
+      errBody = await res.json();
+    } catch {
+      // Ignore JSON parse errors on non-JSON upstream failures
+    }
+    const err = new Error(
+      errBody?.error || `HTTP error! status: ${res.status}`,
+    );
+    err.status = res.status;
+    err.code = errBody?.code || "http_error";
+    err.authConfigured = errBody?.auth_configured;
+    throw err;
+  }
+  return await res.json();
 }

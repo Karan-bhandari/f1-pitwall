@@ -1189,6 +1189,51 @@ def get_season_stats():
                 ev_name = _safe_str(nrow.get("EventName"))
                 ev_fmt = _safe_str(nrow.get("EventFormat")).lower()
                 is_sp = "sprint" in ev_fmt
+                next_sessions = []
+                gmt_offset = None
+                for s_idx in range(1, 6):
+                    s_name = nrow.get(f"Session{s_idx}")
+                    if pd.isna(s_name) or not str(s_name).strip():
+                        continue
+                    s_local = nrow.get(f"Session{s_idx}Date")
+                    s_utc = nrow.get(f"Session{s_idx}DateUtc")
+                    utc_iso = None
+                    if pd.notna(s_utc):
+                        utc_iso = s_utc.isoformat()
+                        if (
+                            not utc_iso.endswith("Z")
+                            and "+" not in utc_iso[10:]
+                            and "-" not in utc_iso[10:]
+                        ):
+                            utc_iso += "Z"
+                    elif (
+                        pd.notna(s_local)
+                        and getattr(s_local, "tzinfo", None) is not None
+                    ):
+                        utc_iso = s_local.tz_convert("UTC").strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        )
+
+                    local_iso = s_local.isoformat() if pd.notna(s_local) else None
+                    if (
+                        gmt_offset is None
+                        and pd.notna(s_local)
+                        and getattr(s_local, "tzinfo", None) is not None
+                    ):
+                        off = s_local.utcoffset()
+                        if off is not None:
+                            total_mins = int(off.total_seconds() // 60)
+                            sign = "+" if total_mins >= 0 else "-"
+                            hrs, mins = divmod(abs(total_mins), 60)
+                            gmt_offset = f"{sign}{hrs:02d}:{mins:02d}"
+
+                    next_sessions.append(
+                        {
+                            "name": str(s_name).strip(),
+                            "utc": utc_iso,
+                            "local": local_iso,
+                        }
+                    )
                 next_round = {
                     "round": next_r_num,
                     "event_name": ev_name,
@@ -1201,6 +1246,8 @@ def get_season_stats():
                         else None
                     ),
                     "is_sprint": is_sp,
+                    "gmt_offset": gmt_offset,
+                    "sessions": next_sessions,
                 }
         except Exception:
             pass

@@ -21,6 +21,9 @@ for _noisy_logger in (
     "requests",
     "requests_cache",
     "fastf1.internals.f1account",
+    "SignalRCoreClient",
+    "websocket",
+    "websockets",
 ):
     logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -102,13 +105,14 @@ def create_app():
 
     # Import and register blueprints
     try:
-        from .blueprints import schedule, telemetry, recap, standings, stats
+        from .blueprints import schedule, telemetry, recap, standings, stats, live
 
         app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
         app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
         app.register_blueprint(recap.recap_bp, url_prefix="/api")
         app.register_blueprint(standings.standings_bp, url_prefix="/api")
         app.register_blueprint(stats.stats_bp, url_prefix="/api")
+        app.register_blueprint(live.live_bp, url_prefix="/api")
         logger.info("Blueprints registered successfully")
     except Exception as e:
         logger.error(f"Failed to register blueprints: {str(e)}")

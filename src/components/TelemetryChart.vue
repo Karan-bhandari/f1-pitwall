@@ -1,7 +1,12 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch, computed } from "vue";
 import Chart from "chart.js/auto";
-import { adjustColor } from "../utils";
+import {
+  adjustColor,
+  convertSpeedKmh,
+  getSpeedUnitLabel,
+  unitSystem,
+} from "../utils";
 import F1Icon from "./F1Icon.vue";
 
 const props = defineProps({
@@ -199,7 +204,13 @@ const renderCharts = (data) => {
     label: `${driverData.abbreviation} (Lap ${driverData.lap_number})`,
     data: driverData.telemetry.map((t) => ({
       x: t.distance,
-      y: isDrs ? (t.drs ? 1 : 0) : t[key],
+      y: isDrs
+        ? t.drs
+          ? 1
+          : 0
+        : key === "speed"
+          ? convertSpeedKmh(t[key], unitSystem.value)
+          : t[key],
     })),
     borderColor: color,
     backgroundColor: color,
@@ -218,7 +229,7 @@ const renderCharts = (data) => {
         createDataset(d1, "Speed", c1, "speed"),
         createDataset(d2, "Speed", c2, "speed"),
       ],
-      "km/h",
+      getSpeedUnitLabel(unitSystem.value),
       null,
       null,
       turns,
@@ -317,14 +328,11 @@ watch(
   { deep: true },
 );
 
-watch(
-  () => props.theme,
-  () => {
-    if (props.telemetryData) {
-      setTimeout(() => renderCharts(props.telemetryData), 0);
-    }
-  },
-);
+watch([() => props.theme, unitSystem], () => {
+  if (props.telemetryData) {
+    setTimeout(() => renderCharts(props.telemetryData), 0);
+  }
+});
 
 onBeforeUnmount(() => {
   chartInstances.forEach((chart) => chart.destroy());

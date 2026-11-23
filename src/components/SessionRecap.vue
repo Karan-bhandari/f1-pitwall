@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import { getWeekendSummary } from "../api";
-import { getTyreColor } from "../utils";
+import { formatSpeedKmh, getTyreColor, unitSystem } from "../utils";
 import F1Icon from "./F1Icon.vue";
 
 const props = defineProps({
@@ -390,12 +390,13 @@ const isPracticeType = (name) => {
               <span class="driver">{{
                 activeSession.insights.speed_king.abbreviation
               }}</span>
-              <span class="value-highlight"
-                >{{
-                  activeSession.insights.speed_king.value.toFixed(1)
-                }}
-                km/h</span
-              >
+              <span class="value-highlight">{{
+                formatSpeedKmh(activeSession.insights.speed_king.value, {
+                  system: unitSystem,
+                  decimals: 1,
+                  includeUnit: true,
+                })
+              }}</span>
             </div>
           </div>
 

@@ -1,10 +1,30 @@
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { Analytics } from "@vercel/analytics/vue";
 import F1Icon from "@/components/F1Icon.vue";
+import { getLiveStatus } from "./api.js";
+import { setUnitSystem, unitSystem } from "./utils.js";
 
 const route = useRoute();
+const isLiveSession = ref(false);
+let liveStatusTimer = null;
+
+const refreshLiveBadge = async () => {
+  if (typeof document !== "undefined" && document.hidden) return;
+  try {
+    const status = await getLiveStatus();
+    isLiveSession.value = Boolean(status?.is_live);
+  } catch {
+    // Nav live badge polling should fail silently
+  }
+};
+
+const handleVisibilityForBadge = () => {
+  if (!document.hidden) {
+    refreshLiveBadge();
+  }
+};
 
 // --- Theme State ---
 const theme = ref("light");
@@ -54,6 +74,17 @@ onMounted(() => {
     });
   }
   document.documentElement.setAttribute("data-theme", theme.value);
+  refreshLiveBadge();
+  liveStatusTimer = setInterval(refreshLiveBadge, 60000);
+  document.addEventListener("visibilitychange", handleVisibilityForBadge);
+});
+
+onUnmounted(() => {
+  if (liveStatusTimer) {
+    clearInterval(liveStatusTimer);
+    liveStatusTimer = null;
+  }
+  document.removeEventListener("visibilitychange", handleVisibilityForBadge);
 });
 </script>
 
@@ -75,6 +106,19 @@ onMounted(() => {
           <RouterLink to="/race" class="nav-tab" active-class="active">
             Race PitWall
           </RouterLink>
+          <RouterLink
+            to="/live"
+            class="nav-tab nav-tab-live"
+            active-class="active"
+          >
+            <span>Live</span>
+            <span
+              v-if="isLiveSession"
+              class="live-nav-dot"
+              title="Live F1 Session Active"
+              aria-label="Session live"
+            ></span>
+          </RouterLink>
           <RouterLink to="/drivers" class="nav-tab" active-class="active">
             Drivers
           </RouterLink>
@@ -94,6 +138,27 @@ onMounted(() => {
           >
             <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
           </select>
+        </div>
+
+        <div class="unit-toggle" role="group" aria-label="Unit system">
+          <button
+            type="button"
+            class="unit-btn"
+            :class="{ active: unitSystem === 'metric' }"
+            @click="setUnitSystem('metric')"
+            title="Metric units (°C, km/h)"
+          >
+            Metric
+          </button>
+          <button
+            type="button"
+            class="unit-btn"
+            :class="{ active: unitSystem === 'imperial' }"
+            @click="setUnitSystem('imperial')"
+            title="Imperial units (°F, mph)"
+          >
+            Imperial
+          </button>
         </div>
 
         <button
@@ -258,6 +323,34 @@ body {
   background-color: var(--accent-color);
 }
 
+.nav-tab-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.live-nav-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--primary-color);
+  box-shadow: 0 0 0 0 rgba(225, 6, 0, 0.7);
+  animation: live-nav-pulse 1.8s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes live-nav-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(225, 6, 0, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(225, 6, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(225, 6, 0, 0);
+  }
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -293,6 +386,39 @@ body {
 #global-year-select:focus {
   outline: none;
   border-color: var(--primary-color);
+}
+
+.unit-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--item-bg-color);
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.unit-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted-text-color);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.34rem 0.6rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.unit-btn:hover {
+  color: var(--text-color);
+}
+
+.unit-btn.active {
+  background: var(--card-bg-color);
+  color: var(--primary-color);
+  box-shadow: 0 1px 2px var(--shadow-color);
 }
 
 .theme-toggle {

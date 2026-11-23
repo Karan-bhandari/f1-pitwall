@@ -3,6 +3,7 @@ import SeasonHubView from "../views/SeasonHubView.vue";
 import RacePitWallView from "../views/RacePitWallView.vue";
 import DriversView from "../views/DriversView.vue";
 import ConstructorsView from "../views/ConstructorsView.vue";
+import LivePitWallView from "../views/LivePitWallView.vue";
 
 const routes = [
   {
@@ -14,6 +15,11 @@ const routes = [
     path: "/race/:event?",
     name: "race-pitwall",
     component: RacePitWallView,
+  },
+  {
+    path: "/live",
+    name: "live-pitwall",
+    component: LivePitWallView,
   },
   {
     path: "/drivers",
