@@ -1,14 +1,16 @@
 from datetime import datetime, timezone
+import json
 import logging
 import os
 import threading
 import time
+import urllib.parse
 
 import requests
 from fastf1.exceptions import F1AuthError
 from fastf1.internals.f1account import get_token, token_manager
-from signalrcore.hub_connection_builder import HubConnectionBuilder
-from signalrcore.messages.completion_message import CompletionMessage
+from websockets.exceptions import WebSocketException
+from websockets.sync.client import connect as ws_connect
 
 from .utils import get_historical_team_color
 
@@ -148,86 +150,106 @@ def _get_auth_token(force_renew: bool = False) -> str:
 
 
 def _fetch_once(token_value: str, timeout: float) -> dict:
-    """Execute one connect -> Subscribe -> snapshot -> disconnect cycle."""
-    headers = {}
+    """Execute one synchronous SignalR Core negotiate -> Subscribe -> snapshot cycle."""
+    sess = requests.Session()
     try:
-        resp = requests.options(NEGOTIATE_URL, timeout=min(5.0, timeout))
-        aws_cookie = resp.cookies.get("AWSALBCORS")
-        if aws_cookie:
-            headers["Cookie"] = f"AWSALBCORS={aws_cookie}"
+        sess.options(NEGOTIATE_URL, timeout=min(5.0, timeout))
+        r_neg = sess.post(
+            f"{NEGOTIATE_URL}?negotiateVersion=1",
+            headers={
+                "Authorization": f"Bearer {token_value}",
+                "Content-Type": "application/json",
+            },
+            timeout=min(5.0, timeout),
+        )
     except requests.RequestException as exc:
         raise LiveUpstreamError(
-            f"SignalR pre-negotiation failed: {type(exc).__name__}"
+            f"SignalR negotiation failed: {type(exc).__name__}"
         ) from exc
 
-    connected = threading.Event()
-    done = threading.Event()
-    result_holder: dict = {}
-    error_holder: dict = {}
-
-    def on_open():
-        connected.set()
-
-    def on_error(err):
-        error_holder["error"] = str(err)
-        done.set()
-
-    def on_completion(msg):
-        if isinstance(msg, CompletionMessage):
-            err = getattr(msg, "error", None)
-            if err:
-                error_holder["error"] = str(err)
-            elif isinstance(msg.result, dict):
-                result_holder["data"] = msg.result
-            else:
-                error_holder["error"] = "Unexpected SignalR completion payload."
-        else:
-            error_holder["error"] = (
-                f"Unexpected SignalR response type: {type(msg).__name__}"
-            )
-        done.set()
-
-    conn = (
-        HubConnectionBuilder()
-        .with_url(
-            SIGNALR_URL,
-            options={
-                "verify_ssl": True,
-                "access_token_factory": lambda: token_value,
-                "headers": headers,
-            },
+    if r_neg.status_code != 200:
+        raise LiveUpstreamError(
+            f"SignalR negotiate failed with HTTP {r_neg.status_code}"
         )
-        .configure_logging(logging.WARNING)
-        .build()
-    )
-
-    conn.on_open(on_open)
-    conn.on_error(on_error)
-    conn.on("feed", lambda _msg: None)
 
     try:
-        conn.start()
-        if not connected.wait(timeout=timeout):
-            if "error" in error_holder:
-                raise LiveUpstreamError(error_holder["error"])
-            raise LiveUpstreamError("Timed out connecting to F1 SignalR hub.")
+        neg = r_neg.json()
+    except ValueError as exc:
+        raise LiveUpstreamError("Invalid JSON from SignalR negotiate.") from exc
 
-        conn.send("Subscribe", [LIVE_TOPICS], on_invocation=on_completion)
-        if not done.wait(timeout=timeout):
+    conn_token = neg.get("connectionToken") or neg.get("connectionId")
+    if not conn_token:
+        raise LiveUpstreamError("SignalR negotiate response missing connectionToken.")
+
+    ws_url = f"{SIGNALR_URL}?{urllib.parse.urlencode({'id': conn_token})}"
+    ws_headers = {"Authorization": f"Bearer {token_value}"}
+    if sess.cookies:
+        ws_headers["Cookie"] = "; ".join(f"{c.name}={c.value}" for c in sess.cookies)
+
+    try:
+        with ws_connect(
+            ws_url,
+            additional_headers=ws_headers,
+            open_timeout=timeout,
+            close_timeout=2.0,
+            max_size=16 * 1024 * 1024,
+        ) as ws:
+            ws.send('{"protocol":"json","version":1}\x1e')
+            hs_raw = ws.recv(timeout=timeout)
+            for frame in str(hs_raw).split("\x1e"):
+                if frame.strip():
+                    hs = json.loads(frame)
+                    if hs.get("error"):
+                        raise LiveUpstreamError(
+                            f"SignalR handshake error: {hs['error']}"
+                        )
+                    break
+
+            sub_payload = (
+                json.dumps(
+                    {
+                        "type": 1,
+                        "invocationId": "1",
+                        "target": "Subscribe",
+                        "arguments": [LIVE_TOPICS],
+                    }
+                )
+                + "\x1e"
+            )
+            ws.send(sub_payload)
+
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                remaining = max(0.25, deadline - time.monotonic())
+                raw_msg = ws.recv(timeout=remaining)
+                for frame in str(raw_msg).split("\x1e"):
+                    if not frame.strip():
+                        continue
+                    parsed = json.loads(frame)
+                    if (
+                        parsed.get("type") == 3
+                        and str(parsed.get("invocationId")) == "1"
+                    ):
+                        if parsed.get("error"):
+                            raise LiveUpstreamError(
+                                f"SignalR Subscribe error: {parsed['error']}"
+                            )
+                        result = parsed.get("result")
+                        if isinstance(result, dict) and result:
+                            return result
+                        raise LiveUpstreamError(
+                            "Empty snapshot received from F1 SignalR hub."
+                        )
+
             raise LiveUpstreamError("Timed out waiting for F1 SignalR snapshot.")
-    finally:
-        try:
-            conn.stop()
-        except Exception:
-            pass
-
-    if "error" in error_holder:
-        raise LiveUpstreamError(error_holder["error"])
-
-    data = result_holder.get("data")
-    if not isinstance(data, dict) or not data:
-        raise LiveUpstreamError("Empty snapshot received from F1 SignalR hub.")
-    return data
+    except LiveUpstreamError:
+        raise
+    except TimeoutError as exc:
+        raise LiveUpstreamError("Timed out waiting for F1 SignalR snapshot.") from exc
+    except (WebSocketException, OSError, ValueError) as exc:
+        raise LiveUpstreamError(
+            f"SignalR WebSocket error: {type(exc).__name__}"
+        ) from exc
 
 
 def _is_auth_error_message(message: str) -> bool:
