@@ -643,4 +643,4 @@ def get_standings():
     except Exception as e:
         print(f"[STANDINGS] Error: {e}", file=sys.stderr)
         traceback.print_exc()
-        return error_response(f"Failed to fetch standings: {str(e)}", 500)
+        return error_response("Failed to fetch standings.", 500)

@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, request, jsonify
 import fastf1
 import pandas as pd
@@ -9,6 +10,7 @@ from ..utils import (
     resolve_team_color,
 )
 
+logger = logging.getLogger(__name__)
 schedule_bp = Blueprint("schedule", __name__)
 
 
@@ -48,8 +50,9 @@ def get_events():
             )
 
         return jsonify({"events": events}), 200
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+    except Exception:
+        logger.exception("Error in schedule blueprint")
+        return jsonify({"error": "An internal error occurred."}), 500
 
 
 @schedule_bp.route("/sessions", methods=["GET"])
@@ -97,8 +100,9 @@ def get_sessions():
                 continue
 
         return jsonify({"sessions": sessions}), 200
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+    except Exception:
+        logger.exception("Error in schedule blueprint")
+        return jsonify({"error": "An internal error occurred."}), 500
 
 
 @schedule_bp.route("/drivers", methods=["GET"])
@@ -188,5 +192,6 @@ def get_drivers():
         )
 
         return jsonify({"drivers": drivers}), 200
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+    except Exception:
+        logger.exception("Error in schedule blueprint")
+        return jsonify({"error": "An internal error occurred."}), 500

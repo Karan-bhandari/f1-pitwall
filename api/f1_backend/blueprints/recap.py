@@ -767,4 +767,4 @@ def get_weekend_summary():
     except Exception as e:
         print(f"[RECAP] Critical Blueprint Error: {e}", file=sys.stderr)
         traceback.print_exc()
-        return error_response(f"An unexpected error occurred: {str(e)}", 500)
+        return error_response("An unexpected error occurred.", 500)

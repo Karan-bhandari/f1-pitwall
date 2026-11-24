@@ -195,7 +195,7 @@ def get_race_comparison():
 
         return jsonify(comparison_data), 200
     except Exception as e:
-        return error_response(f"An error occurred: {str(e)}", 500)
+        return error_response("An internal error occurred.", 500)
 
 
 @telemetry_bp.route("/laps", methods=["GET"])
@@ -251,7 +251,7 @@ def get_laps():
 
         return jsonify({"laps": valid_laps, "fastest_lap": fastest_lap_number}), 200
     except Exception as e:
-        return error_response(f"An error occurred: {str(e)}", 500)
+        return error_response("An internal error occurred.", 500)
 
 
 @telemetry_bp.route("/lap-telemetry", methods=["GET"])
@@ -409,7 +409,7 @@ def get_lap_telemetry():
 
         return jsonify(telemetry_comparison), 200
     except Exception as e:
-        return error_response(f"An error occurred: {str(e)}", 500)
+        return error_response("An internal error occurred.", 500)
 
 
 @telemetry_bp.route("/fastest-lap", methods=["GET"])
@@ -574,7 +574,7 @@ def get_fastest_lap():
 
         return jsonify(fastest_lap_comparison), 200
     except Exception as e:
-        return error_response(f"An error occurred: {str(e)}", 500)
+        return error_response("An internal error occurred.", 500)
 
 
 @telemetry_bp.route("/race-summary", methods=["GET"])
@@ -1202,4 +1202,4 @@ def get_race_summary():
             return error_response("Session data is not yet available.", 404)
         print(f"Error: {e}")
         traceback.print_exc()
-        return error_response(f"An unexpected error occurred: {str(e)}", 500)
+        return error_response("An unexpected error occurred.", 500)

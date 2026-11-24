@@ -1335,9 +1335,8 @@ def get_driver_career():
             return error_response(f"Driver '{driver_id}' not found.", 404)
         info_row = info_res.iloc[0]
     except Exception as e:
-        return error_response(
-            f"Could not retrieve info for driver '{driver_id}': {str(e)}", 404
-        )
+        print(f"[STATS] Driver '{driver_id}' lookup failed: {e}", file=sys.stderr)
+        return error_response(f"Could not retrieve info for driver '{driver_id}'.", 404)
 
     # 2. Race starts, wins, podiums
     starts = _safe_int(getattr(starts_fut.result(), "total_results", 0))
