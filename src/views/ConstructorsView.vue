@@ -273,7 +273,10 @@ function d2Share(team) {
     <!-- Main Content: Constructor Cards Grid -->
     <main v-else class="content-body">
       <div v-if="filteredConstructors.length === 0" class="empty-filter-state">
-        <p>No constructors found matching "{{ searchQuery }}".</p>
+        <p v-if="searchQuery.trim()">
+          No constructors found matching "{{ searchQuery }}".
+        </p>
+        <p v-else>No constructors found in this tier.</p>
         <button
           class="reset-filter-btn"
           @click="
@@ -547,6 +550,11 @@ function d2Share(team) {
   box-sizing: border-box;
 }
 
+.mono {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Page Header --- */
 .page-header {
   margin-bottom: 2rem;
@@ -625,6 +633,7 @@ function d2Share(team) {
   border: 1px solid var(--border-color);
   padding: 0.45rem 0.85rem;
   border-radius: 9999px;
+  font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -634,6 +643,11 @@ function d2Share(team) {
 .tier-pill-btn:hover {
   color: var(--text-color);
   border-color: var(--text-color);
+}
+
+.tier-pill-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .tier-pill-btn.active {
@@ -687,6 +701,12 @@ function d2Share(team) {
 
 .search-input:focus {
   border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+.search-input:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
 }
 
 .clear-search-btn {
@@ -700,10 +720,16 @@ function d2Share(team) {
   align-items: center;
   justify-content: center;
   padding: 0.2rem;
+  border-radius: 4px;
 }
 
 .clear-search-btn:hover {
   color: var(--text-color);
+}
+
+.clear-search-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* --- State Containers (Loading, Error, Historical) --- */
@@ -755,6 +781,7 @@ function d2Share(team) {
   border: none;
   padding: 0.55rem 1.4rem;
   border-radius: 6px;
+  font-family: inherit;
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
@@ -763,6 +790,11 @@ function d2Share(team) {
 
 .retry-btn:hover {
   opacity: 0.9;
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* Historical State Card */
@@ -836,6 +868,11 @@ function d2Share(team) {
   opacity: 0.95;
 }
 
+.historical-action-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 /* --- Empty Filter --- */
 .empty-filter-state {
   text-align: center;
@@ -854,9 +891,20 @@ function d2Share(team) {
   border: 1px solid var(--border-color);
   padding: 0.45rem 1rem;
   border-radius: 6px;
+  font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.reset-filter-btn:hover {
+  border-color: var(--primary-color);
+}
+
+.reset-filter-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* --- Constructor Cards Grid --- */
@@ -916,6 +964,7 @@ function d2Share(team) {
   align-items: center;
   gap: 0.85rem;
   min-width: 0;
+  flex: 1;
 }
 
 /* 44px x 44px Rank Badge */
@@ -930,6 +979,7 @@ function d2Share(team) {
   font-weight: 800;
   font-size: 1.15rem;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
 
@@ -1006,8 +1056,12 @@ function d2Share(team) {
 }
 
 .leader-text {
-  color: #eab308;
+  color: #8a6800;
   font-weight: 700;
+}
+
+:global(html[data-theme="dark"]) .leader-text {
+  color: #facc15;
 }
 
 .gap-text {
@@ -1035,33 +1089,53 @@ function d2Share(team) {
 }
 
 .win-pill {
-  background: rgba(255, 215, 0, 0.15);
-  color: #d97706;
-  border-color: rgba(255, 215, 0, 0.35);
+  background: rgba(255, 215, 0, 0.16);
+  color: #8a6800;
+  border-color: rgba(255, 215, 0, 0.38);
+}
+
+:global(html[data-theme="dark"]) .win-pill {
+  color: #facc15;
 }
 
 .onetwo-pill {
   background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  color: #047857;
   border-color: rgba(16, 185, 129, 0.3);
 }
 
+:global(html[data-theme="dark"]) .onetwo-pill {
+  color: #34d399;
+}
+
 .podium-pill {
-  background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
-  border-color: rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.14);
+  color: #9a4e00;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+:global(html[data-theme="dark"]) .podium-pill {
+  color: #fbbf24;
 }
 
 .pole-pill {
   background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
-  border-color: rgba(99, 102, 241, 0.25);
+  color: #4f46e5;
+  border-color: rgba(99, 102, 241, 0.28);
+}
+
+:global(html[data-theme="dark"]) .pole-pill {
+  color: #818cf8;
 }
 
 .fl-pill {
   background: rgba(236, 72, 153, 0.12);
-  color: #ec4899;
-  border-color: rgba(236, 72, 153, 0.25);
+  color: #be185d;
+  border-color: rgba(236, 72, 153, 0.28);
+}
+
+:global(html[data-theme="dark"]) .fl-pill {
+  color: #f472b6;
 }
 
 .fallback-pill {
@@ -1194,6 +1268,7 @@ function d2Share(team) {
 .stat-gp {
   color: var(--muted-text-color);
   font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-pts {
@@ -1368,6 +1443,15 @@ function d2Share(team) {
 
   .metric-box {
     min-height: 68px;
+  }
+
+  .driver-stats-right {
+    gap: 0.45rem;
+  }
+
+  .driver-name {
+    max-width: none;
+    flex: 1;
   }
 }
 </style>

@@ -187,6 +187,7 @@ const barWidth = (points, max) => {
     <!-- Error -->
     <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
+      <button class="retry-btn" @click="fetchData">Retry</button>
     </div>
 
     <!-- Content -->
@@ -298,10 +299,12 @@ const barWidth = (points, max) => {
       </div>
 
       <!-- Tabs -->
-      <div class="tab-bar">
+      <div class="tab-bar" role="tablist" aria-label="Championship Standings">
         <button
           class="tab-btn"
           :class="{ active: activeTab === 'drivers' }"
+          role="tab"
+          :aria-selected="activeTab === 'drivers'"
           @click="activeTab = 'drivers'"
         >
           DRIVERS
@@ -310,6 +313,8 @@ const barWidth = (points, max) => {
           v-if="hasConstructors"
           class="tab-btn"
           :class="{ active: activeTab === 'constructors' }"
+          role="tab"
+          :aria-selected="activeTab === 'constructors'"
           @click="activeTab = 'constructors'"
         >
           CONSTRUCTORS
@@ -317,7 +322,16 @@ const barWidth = (points, max) => {
       </div>
 
       <!-- Driver Standings -->
-      <div v-if="activeTab === 'drivers'" class="standings-list">
+      <div
+        v-if="
+          activeTab === 'drivers' &&
+          (!data.drivers || data.drivers.length === 0)
+        "
+        class="empty-standings"
+      >
+        <p>No driver standings recorded yet for the {{ year }} season.</p>
+      </div>
+      <div v-else-if="activeTab === 'drivers'" class="standings-list">
         <div
           v-for="driver in data.drivers"
           :key="driver.position"
@@ -429,7 +443,12 @@ const barWidth = (points, max) => {
           class="modal-backdrop"
           @click.self="closeScenariosModal"
         >
-          <div class="scenarios-modal" role="dialog" aria-modal="true">
+          <div
+            class="scenarios-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Championship Scenarios"
+          >
             <!-- Modal Header -->
             <div class="modal-header">
               <div class="modal-title-group">
@@ -761,6 +780,7 @@ const barWidth = (points, max) => {
 
 .season-progress-badge {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--primary-color);
@@ -786,6 +806,7 @@ const barWidth = (points, max) => {
   );
   border: 1px solid var(--primary-color);
   color: var(--primary-color);
+  font-family: inherit;
   font-weight: 700;
   font-size: 0.85rem;
   padding: 0.5rem 0.95rem;
@@ -800,6 +821,11 @@ const barWidth = (points, max) => {
   color: #fff;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(225, 6, 0, 0.25);
+}
+
+.scenarios-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .btn-icon {
@@ -847,7 +873,7 @@ const barWidth = (points, max) => {
 }
 
 .crown-svg {
-  color: #d4a800;
+  color: #8a6800;
   flex-shrink: 0;
 }
 
@@ -855,9 +881,14 @@ const barWidth = (points, max) => {
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  color: #d4a800;
+  color: #8a6800;
   text-transform: uppercase;
   line-height: 1;
+}
+
+:global(html[data-theme="dark"]) .crown-svg,
+:global(html[data-theme="dark"]) .ribbon-text {
+  color: #facc15;
 }
 
 .champion-body {
@@ -895,6 +926,7 @@ const barWidth = (points, max) => {
 
 .champion-code {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 1.1rem;
   font-weight: 900;
   color: var(--text-color);
@@ -923,13 +955,18 @@ const barWidth = (points, max) => {
   align-self: flex-start;
   line-height: 1.2;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.68rem;
   font-weight: 700;
-  color: #d4a800;
-  background: rgba(255, 215, 0, 0.12);
-  border: 1px solid rgba(255, 215, 0, 0.3);
+  color: #8a6800;
+  background: rgba(255, 215, 0, 0.14);
+  border: 1px solid rgba(255, 215, 0, 0.35);
   padding: 0.15rem 0.45rem;
   border-radius: 4px;
+}
+
+:global(html[data-theme="dark"]) .clinch-badge {
+  color: #facc15;
 }
 
 .champion-stats {
@@ -958,6 +995,7 @@ const barWidth = (points, max) => {
 
 .stat-num {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--text-color);
@@ -985,6 +1023,7 @@ const barWidth = (points, max) => {
   border: none;
   background: transparent;
   color: var(--muted-text-color);
+  font-family: inherit;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -995,6 +1034,11 @@ const barWidth = (points, max) => {
 
 .tab-btn:hover {
   color: var(--text-color);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
 }
 
 .tab-btn.active {
@@ -1045,6 +1089,7 @@ const barWidth = (points, max) => {
   height: 1.6rem;
   border-radius: 4px;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.7rem;
   font-weight: 800;
   color: var(--muted-text-color);
@@ -1115,6 +1160,7 @@ const barWidth = (points, max) => {
 
 .driver-code {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   font-weight: 800;
   white-space: nowrap;
@@ -1134,7 +1180,6 @@ const barWidth = (points, max) => {
 .team-name {
   font-size: 0.65rem;
   color: var(--muted-text-color);
-  opacity: 0.7;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1142,6 +1187,7 @@ const barWidth = (points, max) => {
 
 .champion-tag {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.62rem;
   font-weight: 800;
   background: linear-gradient(135deg, #ffd700 0%, #d4a800 100%);
@@ -1163,12 +1209,12 @@ const barWidth = (points, max) => {
 
 .gap-value {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted-text-color);
   min-width: 3.5rem;
   text-align: right;
-  opacity: 0.85;
 }
 
 .points-bar-track {
@@ -1188,6 +1234,7 @@ const barWidth = (points, max) => {
 
 .points-value {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   font-weight: 700;
   min-width: 3rem;
@@ -1196,6 +1243,7 @@ const barWidth = (points, max) => {
 
 .wins-badge {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.6rem;
   font-weight: 700;
   background: var(--primary-color);
@@ -1211,12 +1259,42 @@ const barWidth = (points, max) => {
   visibility: hidden;
 }
 
-/* Loading & Error */
+/* Loading, Error & Empty */
 .loading-state,
-.error-state {
+.error-state,
+.empty-standings {
   text-align: center;
   padding: 3rem 1rem;
   color: var(--muted-text-color);
+}
+
+.empty-standings {
+  background: var(--item-bg-color);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+}
+
+.retry-btn {
+  margin-top: 1rem;
+  background: var(--primary-color);
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.retry-btn:hover {
+  opacity: 0.9;
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .spinner {
@@ -1337,6 +1415,11 @@ const barWidth = (points, max) => {
   background: var(--accent-color);
 }
 
+.modal-close-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 /* Scenario Toggle Bar */
 .scenario-toggle-bar {
   display: flex;
@@ -1351,6 +1434,7 @@ const barWidth = (points, max) => {
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted-text-color);
+  font-family: inherit;
   font-weight: 700;
   font-size: 0.8rem;
   border-radius: 6px;
@@ -1360,6 +1444,11 @@ const barWidth = (points, max) => {
 
 .scenario-toggle-btn:hover {
   color: var(--text-color);
+}
+
+.scenario-toggle-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .scenario-toggle-btn.active {
@@ -1403,6 +1492,7 @@ const barWidth = (points, max) => {
 
 .pill-value {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--text-color);
@@ -1436,8 +1526,12 @@ const barWidth = (points, max) => {
 .clinched-card h5 {
   margin: 0;
   font-size: 1.05rem;
-  color: #d4a800;
+  color: #8a6800;
   font-weight: 800;
+}
+
+:global(html[data-theme="dark"]) .clinched-card h5 {
+  color: #facc15;
 }
 
 .clinched-card p {
@@ -1465,7 +1559,7 @@ const barWidth = (points, max) => {
   align-items: center;
   gap: 0.6rem;
   padding: 0.6rem 0.85rem;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(128, 128, 128, 0.06);
   border-bottom: 1px solid var(--border-color);
   flex-wrap: wrap;
 }
@@ -1733,6 +1827,7 @@ const barWidth = (points, max) => {
   background: var(--card-bg-color, var(--bg-color));
   border: 1px solid var(--border-color);
   color: var(--text-color);
+  font-family: inherit;
   font-weight: 600;
   font-size: 0.8rem;
   padding: 0.45rem 1rem;
@@ -1744,6 +1839,11 @@ const barWidth = (points, max) => {
 .footer-close-btn:hover {
   background: var(--accent-color);
   border-color: var(--text-color);
+}
+
+.footer-close-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* Mobile Responsiveness */
@@ -1845,6 +1945,28 @@ const barWidth = (points, max) => {
 
   .scenarios-modal {
     max-height: 96vh;
+  }
+
+  .modal-header {
+    padding: 1rem 1.1rem;
+  }
+
+  .scenario-toggle-bar {
+    padding: 0.4rem 1.1rem;
+    flex-wrap: wrap;
+  }
+
+  .modal-body {
+    padding: 1rem 1.1rem;
+  }
+
+  .modal-footer {
+    padding: 0.75rem 1.1rem;
+    flex-wrap: wrap;
+  }
+
+  .tab-btn {
+    padding: 0.6rem 1rem;
   }
 
   .contender-profile {

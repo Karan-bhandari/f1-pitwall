@@ -38,12 +38,18 @@ const createChart = (
   const ctx = document.getElementById(canvasId);
   if (!ctx) return null;
 
+  const isSpeedChart = canvasId === "speed-chart";
   const isDark = props.theme === "dark";
   const tickColor = isDark ? "#9898a6" : "#555560";
   const titleColor = isDark ? "#e2e2e8" : "#1e1e24";
   const gridColor = isDark
     ? "rgba(255, 255, 255, 0.08)"
     : "rgba(0, 0, 0, 0.08)";
+  const turnLineColor = isDark
+    ? "rgba(195, 195, 215, 0.28)"
+    : "rgba(60, 60, 75, 0.24)";
+  const pillBg = isDark ? "#1e1e2a" : "#eaeaef";
+  const pillBorder = isDark ? "#343448" : "#d0d0d7";
 
   const plugins = [
     {
@@ -51,21 +57,39 @@ const createChart = (
         display: true,
         text: label,
         color: titleColor,
-        font: { size: 16 },
+        font: { size: 14, weight: "700" },
         align: "start",
-        padding: { top: 10, bottom: 10 },
+        padding: { top: 8, bottom: 8 },
       },
       tooltip: {
         enabled: true,
         mode: "index",
         intersect: false,
+        backgroundColor: "rgba(15, 15, 20, 0.92)",
+        titleFont: { family: "'JetBrains Mono', monospace", size: 12 },
+        bodyFont: { family: "'JetBrains Mono', monospace", size: 12 },
+        padding: 10,
+        cornerRadius: 8,
       },
       legend: {
-        display: canvasId === "speed-chart",
-        labels: { color: titleColor },
+        display: isSpeedChart,
+        labels: {
+          color: titleColor,
+          usePointStyle: true,
+          pointStyle: "circle",
+          padding: 14,
+          font: { weight: "600", size: 12 },
+        },
         weight: 3000,
         onClick: (e, legendItem, legend) => {
+          if (datasets.length <= 1) return;
           const index = legendItem.datasetIndex;
+          const isCurrentlyVisible = legend.chart.isDatasetVisible(index);
+          const visibleCount = datasets.filter((_, i) =>
+            legend.chart.isDatasetVisible(i),
+          ).length;
+          if (isCurrentlyVisible && visibleCount <= 1) return;
+
           chartInstances.forEach((chart) => {
             if (chart) {
               const meta = chart.getDatasetMeta(index);
@@ -91,41 +115,101 @@ const createChart = (
 
         ctx.save();
         ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "600 10px 'JetBrains Mono', monospace";
         ctx.fillStyle = tickColor;
-        ctx.strokeStyle = gridColor;
+        ctx.strokeStyle = turnLineColor;
         ctx.lineWidth = 1;
-        ctx.setLineDash([2, 2]);
+        ctx.setLineDash([4, 4]);
 
-        turnData.forEach((turn) => {
-          const x = xAxis.getPixelForValue(turn.distance);
-          if (x >= xAxis.left && x <= xAxis.right) {
-            ctx.beginPath();
-            if (canvasId === "speed-chart") {
-              ctx.moveTo(x, top);
-              ctx.lineTo(x, chart.height);
-            } else if (
-              canvasId === "rpm-chart" ||
-              (canvasId === "drs-chart" && hasDRS.value)
-            ) {
-              // The bottom-most chart stops at the X-axis
-              ctx.moveTo(x, 0);
-              ctx.lineTo(x, bottom);
-            } else {
-              ctx.moveTo(x, 0);
-              ctx.lineTo(x, chart.height);
+        const visibleTurns = turnData
+          .map((turn) => ({
+            number: turn.number,
+            distance: turn.distance,
+            x: xAxis.getPixelForValue(turn.distance),
+          }))
+          .filter((t) => t.x >= xAxis.left && t.x <= xAxis.right)
+          .sort((a, b) => a.x - b.x);
+
+        visibleTurns.forEach((turn) => {
+          const px = Math.round(turn.x) + 0.5;
+          ctx.beginPath();
+          if (isSpeedChart) {
+            ctx.moveTo(px, top);
+            ctx.lineTo(px, chart.height);
+          } else if (
+            canvasId === "rpm-chart" ||
+            (canvasId === "drs-chart" && hasDRS.value)
+          ) {
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, bottom);
+          } else {
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, chart.height);
+          }
+          ctx.stroke();
+        });
+
+        if (isSpeedChart && visibleTurns.length > 0) {
+          ctx.setLineDash([]);
+          const items = visibleTurns.map((turn) => {
+            const text = `T${turn.number}`;
+            const w = Math.ceil(ctx.measureText(text).width) + 8;
+            return { ...turn, text, w, drawX: turn.x };
+          });
+          const gap = 3;
+          for (let pass = 0; pass < 8; pass++) {
+            for (let i = 1; i < items.length; i++) {
+              const prev = items[i - 1];
+              const curr = items[i];
+              const minDist = (prev.w + curr.w) / 2 + gap;
+              const overlap = minDist - (curr.drawX - prev.drawX);
+              if (overlap > 0) {
+                prev.drawX -= overlap / 2;
+                curr.drawX += overlap / 2;
+              }
             }
-            ctx.stroke();
-            if (canvasId === "speed-chart") {
-              ctx.fillText(`T${turn.number}`, x, top - 10);
+            for (const item of items) {
+              item.drawX = Math.max(
+                xAxis.left + item.w / 2,
+                Math.min(xAxis.right - item.w / 2, item.drawX),
+              );
             }
           }
-        });
+
+          const pillH = 15;
+          const y = top - 14;
+          items.forEach((item) => {
+            ctx.beginPath();
+            ctx.strokeStyle = tickColor;
+            ctx.globalAlpha = 0.65;
+            ctx.moveTo(Math.round(item.x) + 0.5, top);
+            ctx.lineTo(item.drawX, y + pillH / 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            const rx = item.drawX - item.w / 2;
+            const ry = y - pillH / 2;
+            ctx.fillStyle = pillBg;
+            ctx.strokeStyle = pillBorder;
+            ctx.beginPath();
+            ctx.roundRect(rx, ry, item.w, pillH, 4);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = titleColor;
+            ctx.fillText(item.text, item.drawX, y + 0.5);
+          });
+        }
         ctx.restore();
       },
     });
   }
 
-  const yTicks = { color: tickColor };
+  const yTicks = {
+    color: tickColor,
+    font: { family: "'JetBrains Mono', monospace", size: 11 },
+  };
   if (canvasId === "rpm-chart") {
     yTicks.callback = function (value) {
       return value / 1000 + "k";
@@ -135,7 +219,7 @@ const createChart = (
   return new Chart(ctx, {
     type: "line",
     data: {
-      labels: datasets[0].data.map((d) => d.x),
+      labels: datasets[0]?.data.map((d) => d.x) || [],
       datasets: datasets,
     },
     options: {
@@ -143,7 +227,7 @@ const createChart = (
       maintainAspectRatio: false,
       animation: false,
       layout: {
-        padding: { top: 30, right: 20 },
+        padding: { top: isSpeedChart ? 38 : 30, right: 20 },
       },
       interaction: {
         mode: "index",
@@ -187,16 +271,20 @@ const renderCharts = (data) => {
   chartInstances.forEach((chart) => chart.destroy());
   chartInstances = [];
 
-  if (!data || !data.driver1 || !data.driver2) return;
+  if (!data || !data.driver1) return;
 
   const d1 = data.driver1;
-  const d2 = data.driver2;
+  const d2 = data.driver2 || null;
   const turns = data.circuit_info?.turns || [];
 
-  let c1 = d1.team_color ? `#${d1.team_color}` : "#ff0000";
-  let c2 = d2.team_color ? `#${d2.team_color}` : "#0000ff";
+  let c1 = d1.team_color ? `#${d1.team_color.replace("#", "")}` : "#ff0000";
+  let c2 = d2
+    ? d2.team_color
+      ? `#${d2.team_color.replace("#", "")}`
+      : "#0000ff"
+    : null;
 
-  if (c1.toLowerCase() === c2.toLowerCase()) {
+  if (d2 && c1.toLowerCase() === c2.toLowerCase()) {
     c2 = adjustColor(c1, 40);
   }
 
@@ -220,15 +308,20 @@ const renderCharts = (data) => {
     stepped: isDrs ? "before" : false,
   });
 
+  const buildDatasets = (label, key, isDrs = false) =>
+    d2
+      ? [
+          createDataset(d1, label, c1, key, isDrs),
+          createDataset(d2, label, c2, key, isDrs),
+        ]
+      : [createDataset(d1, label, c1, key, isDrs)];
+
   // Speed
   chartInstances.push(
     createChart(
       "speed-chart",
       "Speed",
-      [
-        createDataset(d1, "Speed", c1, "speed"),
-        createDataset(d2, "Speed", c2, "speed"),
-      ],
+      buildDatasets("Speed", "speed"),
       getSpeedUnitLabel(unitSystem.value),
       null,
       null,
@@ -240,10 +333,7 @@ const renderCharts = (data) => {
     createChart(
       "throttle-chart",
       "Throttle",
-      [
-        createDataset(d1, "Throttle", c1, "throttle"),
-        createDataset(d2, "Throttle", c2, "throttle"),
-      ],
+      buildDatasets("Throttle", "throttle"),
       "%",
       0,
       100,
@@ -255,10 +345,7 @@ const renderCharts = (data) => {
     createChart(
       "brake-chart",
       "Brake",
-      [
-        createDataset(d1, "Brake", c1, "brake"),
-        createDataset(d2, "Brake", c2, "brake"),
-      ],
+      buildDatasets("Brake", "brake"),
       "On/Off",
       0,
       1,
@@ -270,10 +357,7 @@ const renderCharts = (data) => {
     createChart(
       "gear-chart",
       "Gear",
-      [
-        createDataset(d1, "Gear", c1, "n_gear"),
-        createDataset(d2, "Gear", c2, "n_gear"),
-      ],
+      buildDatasets("Gear", "n_gear"),
       "Gear",
       null,
       null,
@@ -285,10 +369,7 @@ const renderCharts = (data) => {
     createChart(
       "rpm-chart",
       "RPM",
-      [
-        createDataset(d1, "RPM", c1, "rpm"),
-        createDataset(d2, "RPM", c2, "rpm"),
-      ],
+      buildDatasets("RPM", "rpm"),
       "RPM",
       null,
       null,
@@ -302,10 +383,7 @@ const renderCharts = (data) => {
       createChart(
         "drs-chart",
         "DRS",
-        [
-          createDataset(d1, "DRS", c1, "drs", true),
-          createDataset(d2, "DRS", c2, "drs", true),
-        ],
+        buildDatasets("DRS", "drs", true),
         "On/Off",
         0,
         1,
@@ -329,6 +407,12 @@ watch(
 );
 
 watch([() => props.theme, unitSystem], () => {
+  if (props.telemetryData) {
+    setTimeout(() => renderCharts(props.telemetryData), 0);
+  }
+});
+
+onMounted(() => {
   if (props.telemetryData) {
     setTimeout(() => renderCharts(props.telemetryData), 0);
   }
@@ -359,20 +443,21 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <p v-if="isLoading" class="loading-text">Loading telemetry data...</p>
-      <p v-if="error" class="error-text">{{ error }}</p>
+      <p v-if="error" class="error-text" role="alert">{{ error }}</p>
 
-      <div
-        v-if="telemetryData"
-        class="telemetry-container"
-        :style="{ height: hasDRS ? '1800px' : '1500px' }"
-      >
-        <div class="chart-row"><canvas id="speed-chart"></canvas></div>
-        <div class="chart-row"><canvas id="throttle-chart"></canvas></div>
-        <div class="chart-row"><canvas id="brake-chart"></canvas></div>
-        <div class="chart-row"><canvas id="gear-chart"></canvas></div>
-        <div class="chart-row"><canvas id="rpm-chart"></canvas></div>
-        <div v-if="hasDRS" class="chart-row">
-          <canvas id="drs-chart"></canvas>
+      <div v-if="telemetryData" class="telemetry-card">
+        <div
+          class="telemetry-container"
+          :style="{ height: hasDRS ? '1800px' : '1500px' }"
+        >
+          <div class="chart-row"><canvas id="speed-chart"></canvas></div>
+          <div class="chart-row"><canvas id="throttle-chart"></canvas></div>
+          <div class="chart-row"><canvas id="brake-chart"></canvas></div>
+          <div class="chart-row"><canvas id="gear-chart"></canvas></div>
+          <div class="chart-row"><canvas id="rpm-chart"></canvas></div>
+          <div v-if="hasDRS" class="chart-row">
+            <canvas id="drs-chart"></canvas>
+          </div>
         </div>
       </div>
     </template>
@@ -390,7 +475,9 @@ onBeforeUnmount(() => {
 }
 .no-telemetry-state h3 {
   margin-top: 0;
+  margin-bottom: 0.75rem;
   border: none;
+  color: var(--text-color);
   justify-content: center;
   align-items: center;
   gap: 0.5rem;
@@ -398,17 +485,31 @@ onBeforeUnmount(() => {
 }
 .no-telemetry-state p {
   color: var(--muted-text-color);
-  margin: 0.5rem 0;
+  margin: 0.5rem auto;
+  max-width: 520px;
+  line-height: 1.55;
 }
 .loading-text,
 .error-text {
   text-align: center;
-  padding: 1rem;
+  padding: 2rem 1.5rem;
   color: var(--muted-text-color);
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-top: 1rem;
 }
 .error-text {
   color: var(--primary-color);
-  font-weight: bold;
+  background: var(--accent-color);
+  border-color: rgba(225, 6, 0, 0.25);
+  font-weight: 600;
+}
+.telemetry-card {
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
 }
 .telemetry-container {
   display: flex;
@@ -419,5 +520,11 @@ onBeforeUnmount(() => {
   flex: 1;
   position: relative;
   min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .telemetry-card {
+    padding: 0.85rem 0.75rem;
+  }
 }
 </style>

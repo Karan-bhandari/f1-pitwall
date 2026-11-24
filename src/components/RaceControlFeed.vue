@@ -117,6 +117,7 @@ const getBadge = (msg) => {
           type="button"
           class="filter-chip"
           :class="{ active: activeFilter === 'all' }"
+          :aria-pressed="activeFilter === 'all'"
           @click="activeFilter = 'all'"
         >
           All
@@ -125,6 +126,7 @@ const getBadge = (msg) => {
           type="button"
           class="filter-chip"
           :class="{ active: activeFilter === 'flags' }"
+          :aria-pressed="activeFilter === 'flags'"
           @click="activeFilter = 'flags'"
         >
           Flags / SC
@@ -133,6 +135,7 @@ const getBadge = (msg) => {
           type="button"
           class="filter-chip"
           :class="{ active: activeFilter === 'incidents' }"
+          :aria-pressed="activeFilter === 'incidents'"
           @click="activeFilter = 'incidents'"
         >
           Incidents
@@ -141,7 +144,28 @@ const getBadge = (msg) => {
     </div>
 
     <div v-if="!filteredMessages.length" class="rc-empty">
-      No race control messages matching this filter.
+      <p class="rc-empty-title">
+        {{
+          messages.length
+            ? "No messages match this filter"
+            : "No race control messages yet"
+        }}
+      </p>
+      <p class="rc-empty-sub">
+        {{
+          messages.length
+            ? "Try switching filters to view all FIA stewards and track notices."
+            : "FIA flags, safety car deployments, and steward notices will appear here."
+        }}
+      </p>
+      <button
+        v-if="messages.length && activeFilter !== 'all'"
+        type="button"
+        class="rc-reset-btn"
+        @click="activeFilter = 'all'"
+      >
+        Show all messages
+      </button>
     </div>
 
     <ul v-else class="rc-list">
@@ -237,17 +261,60 @@ const getBadge = (msg) => {
   border-color: var(--primary-color);
 }
 
+.filter-chip:focus-visible,
+.rc-reset-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .filter-chip.active {
   background: var(--accent-color);
-  color: var(--primary-color);
+  color: #b91c1c;
   border-color: var(--primary-color);
 }
 
+html[data-theme="dark"] .filter-chip.active {
+  color: #ff6b5b;
+}
+
 .rc-empty {
-  padding: 1.75rem 1rem;
+  padding: 2rem 1.25rem;
   text-align: center;
   color: var(--muted-text-color);
   font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.rc-empty-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.rc-empty-sub {
+  margin: 0;
+  font-size: 0.8rem;
+  max-width: 34ch;
+}
+
+.rc-reset-btn {
+  margin-top: 0.35rem;
+  border: 1px solid var(--border-color);
+  background: var(--item-bg-color);
+  color: var(--text-color);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.32rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.rc-reset-btn:hover {
+  border-color: var(--primary-color);
 }
 
 .rc-list {
@@ -297,20 +364,20 @@ const getBadge = (msg) => {
   letter-spacing: 0.4px;
 }
 .rc-red {
-  background: rgba(225, 6, 0, 0.18);
-  color: var(--primary-color);
+  background: rgba(225, 6, 0, 0.16);
+  color: #b91c1c;
 }
 .rc-yellow {
   background: rgba(234, 179, 8, 0.22);
-  color: #a16207;
+  color: #854d0e;
 }
 .rc-green {
   background: rgba(34, 197, 94, 0.18);
-  color: #16a34a;
+  color: #15803d;
 }
 .rc-blue {
   background: rgba(56, 189, 248, 0.18);
-  color: #0284c7;
+  color: #0369a1;
 }
 .rc-chequered {
   background: var(--text-color);
@@ -321,6 +388,9 @@ const getBadge = (msg) => {
   color: var(--muted-text-color);
 }
 
+html[data-theme="dark"] .rc-red {
+  color: #fca5a5;
+}
 html[data-theme="dark"] .rc-yellow {
   color: #facc15;
 }

@@ -23,6 +23,7 @@ docs/
 GEMINI.md
 skills-dev/
 .gemini/
+.impeccable/
 
 # Local Tests
 tests/*

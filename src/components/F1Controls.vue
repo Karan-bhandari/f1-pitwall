@@ -1,7 +1,9 @@
 <script setup>
+import { computed } from "vue";
 import F1Icon from "./F1Icon.vue";
+import PitwallSelect from "./PitwallSelect.vue";
 
-defineProps({
+const props = defineProps({
   // Data for dropdowns
   years: Array,
   events: Array,
@@ -45,50 +47,105 @@ defineEmits([
   "update:viewMode",
   "select-preset",
 ]);
+
+const yearOptions = computed(() =>
+  (props.years || []).map((y) => ({ value: y, label: String(y) })),
+);
+
+const eventOptions = computed(() =>
+  (props.events || []).map((ev, idx) => {
+    const round = ev.round_number ?? ev.round ?? idx + 1;
+    return {
+      value: ev.event_key,
+      badge: `R${String(round).padStart(2, "0")}`,
+      label: ev.event_name,
+      meta: ev.country || "",
+      triggerLabel: ev.country
+        ? `${ev.event_name} (${ev.country})`
+        : ev.event_name,
+    };
+  }),
+);
+
+const sessionOptions = computed(() =>
+  (props.sessions || []).map((s) => ({
+    value: s.name,
+    label: s.name,
+  })),
+);
+
+const formatTeamColor = (c) => {
+  if (!c) return "";
+  return c.startsWith("#") ? c : `#${c}`;
+};
+
+const driver1Options = computed(() =>
+  (props.drivers || []).map((d) => ({
+    value: d.driver_number,
+    label: d.display_name,
+    meta: d.team || "",
+    color: formatTeamColor(d.team_color),
+  })),
+);
+
+const driver2Options = computed(() => [
+  { value: "", label: "None (Single Driver)" },
+  ...driver1Options.value,
+]);
+
+const buildLapOptions = (laps) =>
+  (laps || []).map((lap) => ({
+    value: lap.lap_number,
+    badge: `L${String(lap.lap_number).padStart(2, "0")}`,
+    label: lap.lap_time || "No Time",
+    triggerLabel: `Lap ${lap.lap_number} (${lap.lap_time || "N/A"})`,
+    searchText: `lap ${lap.lap_number}`,
+  }));
+
+const lap1Options = computed(() => buildLapOptions(props.lapsDriver1));
+const lap2Options = computed(() => buildLapOptions(props.lapsDriver2));
 </script>
 
 <template>
   <div v-if="!hideYearSelect" class="form-group">
     <label for="year-select">Year:</label>
-    <select
+    <PitwallSelect
       id="year-select"
-      :value="year"
-      @change="$emit('update:year', $event.target.value)"
-    >
-      <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-    </select>
+      :modelValue="year"
+      :options="yearOptions"
+      placeholder="Select Year"
+      searchPlaceholder="Jump to year..."
+      monoValue
+      @update:modelValue="$emit('update:year', $event)"
+    />
   </div>
 
   <p v-if="isLoadingEvents" class="loading-text">Loading events...</p>
   <p v-if="eventsError" class="error-text">{{ eventsError }}</p>
   <div v-if="!isLoadingEvents && events.length > 0" class="form-group">
     <label for="event-select">Event:</label>
-    <select
+    <PitwallSelect
       id="event-select"
-      :value="selectedEventKey"
-      @change="$emit('update:selectedEventKey', $event.target.value)"
-    >
-      <option value="">Select Event</option>
-      <option v-for="ev in events" :key="ev.event_key" :value="ev.event_key">
-        {{ ev.event_name }} ({{ ev.country }})
-      </option>
-    </select>
+      :modelValue="selectedEventKey"
+      :options="eventOptions"
+      placeholder="Select Event"
+      searchPlaceholder="Filter by Grand Prix, country, or round..."
+      @update:modelValue="$emit('update:selectedEventKey', $event)"
+    />
   </div>
 
   <p v-if="isLoadingSessions" class="loading-text">Loading sessions...</p>
   <p v-if="sessionsError" class="error-text">{{ sessionsError }}</p>
   <div v-if="!isLoadingSessions && sessions.length > 1" class="form-group">
     <label for="session-select">Session:</label>
-    <select
+    <PitwallSelect
       id="session-select"
-      :value="selectedSessionName"
-      @change="$emit('update:selectedSessionName', $event.target.value)"
-    >
-      <option value="">Select Session</option>
-      <option v-for="s in sessions" :key="s.name" :value="s.name">
-        {{ s.name }}
-      </option>
-    </select>
+      :modelValue="selectedSessionName"
+      :options="sessionOptions"
+      placeholder="Select Session"
+      :searchable="false"
+      @update:modelValue="$emit('update:selectedSessionName', $event)"
+    />
   </div>
 
   <div
@@ -96,6 +153,7 @@ defineEmits([
     class="view-button-container"
   >
     <button
+      type="button"
       class="view-btn"
       :class="{ selected: viewMode === 'summary' }"
       @click="$emit('update:viewMode', 'summary')"
@@ -108,6 +166,7 @@ defineEmits([
     </button>
     <button
       v-if="Number(year) >= 2018"
+      type="button"
       class="view-btn"
       :class="{ selected: viewMode === 'comparison' }"
       @click="$emit('update:viewMode', 'comparison')"
@@ -154,79 +213,55 @@ defineEmits([
     <div class="driver-controls">
       <div class="driver-group">
         <div class="form-group">
-          <label for="driver1-select">Compare Driver 1:</label>
-          <select
+          <label for="driver1-select">Driver 1:</label>
+          <PitwallSelect
             id="driver1-select"
-            :value="selectedDriver1"
-            @change="$emit('update:selectedDriver1', $event.target.value)"
-          >
-            <option value="">Select Driver 1</option>
-            <option
-              v-for="d in drivers.filter(
-                (d) => String(d.driver_number) !== String(selectedDriver2),
-              )"
-              :key="d.driver_number"
-              :value="d.driver_number"
-            >
-              {{ d.display_name }}
-            </option>
-          </select>
+            :modelValue="selectedDriver1"
+            :options="driver1Options"
+            placeholder="Select Driver 1"
+            searchPlaceholder="Filter driver or team..."
+            @update:modelValue="$emit('update:selectedDriver1', $event)"
+          />
         </div>
         <div class="form-group" v-if="selectedDriver1">
           <label for="lap1-select">Select Lap (Driver 1):</label>
-          <select
+          <PitwallSelect
             id="lap1-select"
-            :value="selectedLap1"
-            @change="$emit('update:selectedLap1', $event.target.value)"
+            :modelValue="selectedLap1"
+            :options="lap1Options"
+            placeholder="Select Lap"
+            searchPlaceholder="Jump to lap (e.g. 14)..."
             :disabled="isLoadingComparison"
-          >
-            <option
-              v-for="lap in lapsDriver1"
-              :key="lap.lap_number"
-              :value="lap.lap_number"
-            >
-              Lap {{ lap.lap_number }} ({{ lap.lap_time || "N/A" }})
-            </option>
-          </select>
+            monoValue
+            @update:modelValue="$emit('update:selectedLap1', $event)"
+          />
         </div>
       </div>
 
       <div class="driver-group">
         <div class="form-group">
-          <label for="driver2-select">Compare Driver 2:</label>
-          <select
+          <label for="driver2-select">Compare Driver 2 (Optional):</label>
+          <PitwallSelect
             id="driver2-select"
-            :value="selectedDriver2"
-            @change="$emit('update:selectedDriver2', $event.target.value)"
-          >
-            <option value="">Select Driver 2</option>
-            <option
-              v-for="d in drivers.filter(
-                (d) => String(d.driver_number) !== String(selectedDriver1),
-              )"
-              :key="d.driver_number"
-              :value="d.driver_number"
-            >
-              {{ d.display_name }}
-            </option>
-          </select>
+            :modelValue="selectedDriver2"
+            :options="driver2Options"
+            placeholder="None (Single Driver)"
+            searchPlaceholder="Filter driver or team..."
+            @update:modelValue="$emit('update:selectedDriver2', $event)"
+          />
         </div>
         <div class="form-group" v-if="selectedDriver2">
           <label for="lap2-select">Select Lap (Driver 2):</label>
-          <select
+          <PitwallSelect
             id="lap2-select"
-            :value="selectedLap2"
-            @change="$emit('update:selectedLap2', $event.target.value)"
+            :modelValue="selectedLap2"
+            :options="lap2Options"
+            placeholder="Select Lap"
+            searchPlaceholder="Jump to lap (e.g. 14)..."
             :disabled="isLoadingComparison"
-          >
-            <option
-              v-for="lap in lapsDriver2"
-              :key="lap.lap_number"
-              :value="lap.lap_number"
-            >
-              Lap {{ lap.lap_number }} ({{ lap.lap_time || "N/A" }})
-            </option>
-          </select>
+            monoValue
+            @update:modelValue="$emit('update:selectedLap2', $event)"
+          />
         </div>
       </div>
     </div>
@@ -235,95 +270,72 @@ defineEmits([
 
 <style scoped>
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.15rem;
 }
 
 label {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.45rem;
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: var(--muted-text-color);
-}
-
-select {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background-color: var(--input-bg-color);
-  color: var(--text-color);
-  font-size: 0.95rem;
-  font-weight: 500;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 1rem center;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-select:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  background-color: var(--accent-color);
-}
-
-select:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--accent-color);
-}
-
-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .view-button-container {
   display: flex;
   justify-content: center;
-  gap: 1.5rem;
-  margin: 2rem 0;
-  padding: 2rem 0;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 1.25rem 0;
   border-top: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
 }
 
 .view-btn {
-  padding: 0.8rem 2.5rem;
+  padding: 0.75rem 2rem;
   border: 1px solid var(--border-color);
   background: var(--item-bg-color);
   color: var(--text-color);
   cursor: pointer;
   border-radius: 8px;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.8px;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s ease;
 }
 
-.view-btn:hover {
+.view-btn:hover:not(.selected) {
   border-color: var(--primary-color);
   color: var(--primary-color);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 4px 12px var(--shadow-color);
+}
+
+.view-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .view-btn.selected {
   background: var(--primary-color);
   color: #ffffff;
   border-color: var(--primary-color);
-  box-shadow: 0 4px 15px var(--accent-color);
+  box-shadow: 0 4px 12px var(--shadow-color);
 }
 
 .preset-controls-bar {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
   padding: 0.85rem 1.25rem;
   background: var(--item-bg-color);
   border-radius: 10px;
@@ -332,7 +344,7 @@ select:disabled {
 }
 
 .preset-label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -342,12 +354,16 @@ select:disabled {
 
 .preset-buttons {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
   flex: 1;
 }
 
 .preset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
   padding: 0.5rem 0.85rem;
   font-size: 0.8rem;
   font-weight: 700;
@@ -356,7 +372,11 @@ select:disabled {
   border: 1px solid var(--border-color);
   color: var(--text-color);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
   white-space: nowrap;
 }
 
@@ -367,12 +387,17 @@ select:disabled {
   transform: translateY(-1px);
 }
 
+.preset-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .driver-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  margin-top: 1.5rem;
-  padding: 1.5rem;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  padding: 1.25rem 1.5rem;
   background: var(--item-bg-color);
   border-radius: 12px;
   border: 1px solid var(--border-color);
@@ -382,6 +407,10 @@ select:disabled {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.driver-group .form-group {
+  margin-bottom: 0;
 }
 
 .loading-text,

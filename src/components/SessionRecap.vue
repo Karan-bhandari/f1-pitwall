@@ -86,9 +86,9 @@ const isPracticeType = (name) => {
       <p>Gathering pitwall data...</p>
     </div>
 
-    <div v-else-if="error" class="error-state">
+    <div v-else-if="error" class="error-state" role="alert">
       <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchData">Retry</button>
+      <button type="button" class="retry-btn" @click="fetchData">Retry</button>
     </div>
 
     <div v-else-if="recapData" class="content">
@@ -112,6 +112,7 @@ const isPracticeType = (name) => {
         <button
           v-for="s in sessions"
           :key="s.session_name"
+          type="button"
           :class="{ active: activeSessionId === s.session_name }"
           @click="activeSessionId = s.session_name"
         >
@@ -486,6 +487,7 @@ const isPracticeType = (name) => {
   letter-spacing: 1px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -502,7 +504,7 @@ const isPracticeType = (name) => {
 
 .header-meta {
   font-size: 0.95rem;
-  opacity: 0.7;
+  color: var(--muted-text-color);
   margin-top: 0.5rem;
   display: flex;
   align-items: center;
@@ -511,7 +513,7 @@ const isPracticeType = (name) => {
 
 .divider {
   margin: 0 12px;
-  opacity: 0.3;
+  opacity: 0.4;
 }
 .session-indicator {
   color: var(--primary-color);
@@ -526,9 +528,10 @@ const isPracticeType = (name) => {
   background: var(--item-bg-color);
   padding: 8px;
   border-radius: 10px;
+  border: 1px solid var(--border-color);
 }
 
-button {
+.session-tabs button {
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-color);
@@ -537,17 +540,57 @@ button {
   cursor: pointer;
   font-weight: 700;
   font-size: 0.8rem;
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
   white-space: nowrap;
 }
 
-button:hover {
-  background: rgba(255, 255, 255, 0.05);
+.session-tabs button:hover:not(.active) {
+  background: var(--accent-color);
+  color: var(--primary-color);
 }
 
-button.active {
+.session-tabs button:focus-visible,
+.retry-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.session-tabs button.active {
   background: var(--primary-color);
   color: #fff;
+}
+
+.error-state {
+  text-align: center;
+  padding: 3.5rem 1.5rem;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.error-state p {
+  margin: 0 0 1rem;
+}
+
+.retry-btn {
+  padding: 0.55rem 1.25rem;
+  border-radius: 6px;
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.retry-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
 .recap-grid {
@@ -589,13 +632,13 @@ table {
 
 th {
   text-align: left;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.02);
+  padding: 0.9rem 1rem;
+  background: rgba(128, 128, 128, 0.04);
   border-bottom: 1px solid var(--border-color);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 1px;
-  opacity: 0.6;
+  color: var(--muted-text-color);
 }
 
 td {
@@ -643,13 +686,23 @@ td {
 }
 
 .pos-delta.gain {
-  color: #00d200;
-  background: rgba(0, 210, 0, 0.14);
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.14);
+}
+
+:global(html[data-theme="dark"]) .pos-delta.gain {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.14);
 }
 
 .pos-delta.loss {
-  color: #ff3b30;
-  background: rgba(255, 59, 48, 0.14);
+  color: #d9261c;
+  background: rgba(217, 38, 28, 0.12);
+}
+
+:global(html[data-theme="dark"]) .pos-delta.loss {
+  color: #ff4d42;
+  background: rgba(255, 59, 48, 0.16);
 }
 
 .pos-delta.even {
@@ -665,11 +718,17 @@ td {
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(179, 90, 209, 0.2);
-  color: #c468e2;
-  border: 1px solid rgba(179, 90, 209, 0.4);
+  background: rgba(147, 51, 234, 0.14);
+  color: #7e22ce;
+  border: 1px solid rgba(147, 51, 234, 0.35);
   line-height: 1.2;
   margin-left: 4px;
+}
+
+:global(html[data-theme="dark"]) .fl-pill {
+  background: rgba(179, 90, 209, 0.2);
+  color: #d48ef0;
+  border-color: rgba(179, 90, 209, 0.4);
 }
 
 .status-cell-stack {
@@ -701,9 +760,15 @@ td {
 }
 
 .steward-pill.is-penalty {
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+  border: 1px solid rgba(217, 119, 6, 0.38);
+}
+
+:global(html[data-theme="dark"]) .steward-pill.is-penalty {
   background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .steward-pill.is-bw-flag {
@@ -755,22 +820,31 @@ td {
 
 .finish-time {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
 .pts-pill {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(0, 210, 0, 0.15);
-  color: #00d200;
+  background: rgba(21, 128, 61, 0.14);
+  color: #15803d;
+}
+
+:global(html[data-theme="dark"]) .pts-pill {
+  background: rgba(74, 222, 128, 0.16);
+  color: #4ade80;
 }
 
 .pts-zero {
-  opacity: 0.4;
+  color: var(--muted-text-color);
+  opacity: 0.7;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .driver-cell {
@@ -794,7 +868,7 @@ td {
   font-weight: 800;
 }
 .full-name {
-  opacity: 0.5;
+  color: var(--muted-text-color);
   font-size: 0.85rem;
 }
 .time-cell,
@@ -842,6 +916,7 @@ td {
 
 .value-highlight {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--primary-color);
   font-weight: 700;
 }
@@ -871,7 +946,7 @@ td {
 
 .sector-label {
   font-weight: 800;
-  opacity: 0.6;
+  color: var(--muted-text-color);
   font-size: 0.8rem;
   min-width: 30px;
   padding-right: 12px;
@@ -884,6 +959,7 @@ td {
 
 .sector-time {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--primary-color);
   font-weight: 700;
   font-size: 0.9rem;
@@ -910,6 +986,8 @@ td {
   border-right: none;
 }
 .strategy-stint .lap-count {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.65rem;
   font-weight: 900;
   color: #000;
@@ -943,7 +1021,15 @@ td {
 .incident-list li {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 0.85rem;
+}
+
+.incident-list .time {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-text-color);
+  font-weight: 600;
 }
 
 .type {
@@ -958,9 +1044,15 @@ td {
   color: #000;
 }
 .type.vsc {
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+}
+
+:global(html[data-theme="dark"]) .type.vsc {
   background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.35);
 }
 .type.red-flag {
   background: #ef4444;

@@ -140,6 +140,7 @@ const getSectorColorForTheme = (status) => {
         <button
           v-for="phase in availablePhases"
           :key="phase"
+          type="button"
           class="phase-btn"
           :class="{ active: selectedPhase === phase }"
           @click="selectedPhase = phase"
@@ -171,7 +172,11 @@ const getSectorColorForTheme = (status) => {
         </p>
       </div>
 
-      <div class="summary-table">
+      <div v-if="filteredResults.length === 0" class="no-data">
+        <p>No qualifying laps recorded for {{ selectedPhase }}.</p>
+      </div>
+
+      <div v-else class="summary-table">
         <!-- Unified Header -->
         <div class="summary-header header-row">
           <div class="col-fixed header-cell">
@@ -220,12 +225,26 @@ const getSectorColorForTheme = (status) => {
                   <div
                     v-if="lap.phase === selectedPhase"
                     class="lap-pill"
+                    role="button"
+                    tabindex="0"
                     :class="[
                       lap.type,
                       { 'is-pb': lap.is_pb, 'deleted-lap': lap.deleted },
                     ]"
-                    title="Click to compare telemetry for this lap"
+                    title="Click to view telemetry for this lap"
                     @click="
+                      emit('select-lap', {
+                        driverNumber: driver.driver_number,
+                        lapNumber: lap.lap_number,
+                      })
+                    "
+                    @keydown.enter.prevent="
+                      emit('select-lap', {
+                        driverNumber: driver.driver_number,
+                        lapNumber: lap.lap_number,
+                      })
+                    "
+                    @keydown.space.prevent="
                       emit('select-lap', {
                         driverNumber: driver.driver_number,
                         lapNumber: lap.lap_number,
@@ -235,6 +254,7 @@ const getSectorColorForTheme = (status) => {
                     <div class="lap-main">
                       <img
                         :src="getTyreIcon(lap.compound)"
+                        :alt="lap.compound || 'Tyre'"
                         class="tyre-icon"
                         :title="lap.compound"
                       />
@@ -347,8 +367,21 @@ const getSectorColorForTheme = (status) => {
   font-weight: 800;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease,
+    background-color 0.2s ease;
   letter-spacing: 1px;
+}
+
+.phase-btn:hover:not(.active) {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.phase-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .phase-btn.active {
@@ -368,6 +401,10 @@ const getSectorColorForTheme = (status) => {
   color: var(--primary-color);
   font-weight: 600;
   border-bottom: 1px solid var(--border-color);
+}
+
+.historical-note p {
+  margin: 0;
 }
 
 .summary-table {
@@ -473,7 +510,10 @@ const getSectorColorForTheme = (status) => {
 
 .drop-zone-row {
   background: rgba(235, 59, 53, 0.05);
-  border-left: 3px solid rgba(235, 59, 53, 0.5);
+}
+
+.drop-zone-row .col-fixed {
+  background: color-mix(in srgb, #eb3b35 6%, var(--card-bg-color));
 }
 
 .lap-pill.deleted-lap {
@@ -487,9 +527,12 @@ const getSectorColorForTheme = (status) => {
 }
 
 .deleted-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 0.6rem;
   font-weight: 800;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
   background: rgba(235, 59, 53, 0.2);
   color: #eb3b35;
@@ -531,11 +574,19 @@ const getSectorColorForTheme = (status) => {
   flex-shrink: 0;
   box-shadow: 0 2px 6px var(--shadow-color);
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .lap-pill:hover {
   transform: translateY(-2px);
+  border-color: var(--primary-color);
+}
+
+.lap-pill:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .lap-main {
@@ -550,6 +601,8 @@ const getSectorColorForTheme = (status) => {
 .tyre-icon {
   width: 22px;
   height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .lap-time {

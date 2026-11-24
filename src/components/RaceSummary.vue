@@ -21,13 +21,84 @@ const props = defineProps({
     required: false,
     default: 2024,
   },
+  sessionName: {
+    type: String,
+    default: "",
+  },
 });
+
+const isPracticeSession = computed(() => {
+  const n = (props.sessionName || "").toLowerCase();
+  return n.includes("practice") || /\bfp[123]\b/.test(n);
+});
+
+const getDriverBestLap = (driver) => {
+  let best = null;
+  let bestAny = null;
+  for (const stint of driver?.stints || []) {
+    for (const lap of stint?.laps || []) {
+      const secs = lap?.lap_time_seconds;
+      if (typeof secs === "number" && Number.isFinite(secs) && secs > 0) {
+        if (!bestAny || secs < bestAny.seconds) {
+          bestAny = { seconds: secs, formatted: lap.lap_time };
+        }
+        if (!lap.deleted && (!best || secs < best.seconds)) {
+          best = { seconds: secs, formatted: lap.lap_time };
+        }
+      }
+    }
+  }
+  return best || bestAny;
+};
+
+const getDriverLapCount = (driver) => {
+  if (
+    typeof driver?.completed_laps === "number" &&
+    driver.completed_laps >= 0
+  ) {
+    return driver.completed_laps;
+  }
+  return (driver?.stints || []).reduce((sum, s) => sum + (s.lap_count || 0), 0);
+};
+
+const fastestPracticeSeconds = computed(() => {
+  if (!isPracticeSession.value || !props.summaryData?.results) return null;
+  let minSec = null;
+  for (const d of props.summaryData.results) {
+    const b = getDriverBestLap(d);
+    if (b && (minSec === null || b.seconds < minSec)) {
+      minSec = b.seconds;
+    }
+  }
+  return minSec;
+});
+
+const getPracticeBestTime = (driver) => {
+  const b = getDriverBestLap(driver);
+  return b?.formatted || "No Time";
+};
+
+const getPracticeGap = (driver) => {
+  const b = getDriverBestLap(driver);
+  const leader = fastestPracticeSeconds.value;
+  if (!b || leader === null) return "—";
+  const diff = b.seconds - leader;
+  if (diff <= 0.0005) return "—";
+  return `+${diff.toFixed(3)}s`;
+};
 
 const sortedResults = computed(() => {
   if (!props.summaryData?.results) return [];
-  return [...props.summaryData.results].sort(
-    (a, b) => (a.position || 99) - (b.position || 99),
-  );
+  const list = [...props.summaryData.results];
+  if (isPracticeSession.value) {
+    return list.sort((a, b) => {
+      const ba = getDriverBestLap(a)?.seconds ?? Number.POSITIVE_INFINITY;
+      const bb = getDriverBestLap(b)?.seconds ?? Number.POSITIVE_INFINITY;
+      if (ba !== bb) return ba - bb;
+      return getDriverLapCount(b) - getDriverLapCount(a);
+    });
+  }
+  return list.sort((a, b) => (a.position || 99) - (b.position || 99));
 });
 
 const hasStintData = computed(
@@ -124,33 +195,61 @@ const calculatePosition = (startLap, lapCount = 1) => {
         <div class="summary-header">
           <div class="col-pos">POS</div>
           <div class="col-driver">DRIVER</div>
-          <div class="col-status header-status" title="Race Status / Info">
-            <span class="sr-only">RACE STATUS / INFO</span>
+          <div
+            class="col-status header-status"
+            :title="
+              isPracticeSession
+                ? 'Practice Best Lap / Gap / Laps'
+                : 'Race Status / Info'
+            "
+          >
+            <span class="sr-only">{{
+              isPracticeSession
+                ? "PRACTICE TIMING / LAPS"
+                : "RACE STATUS / INFO"
+            }}</span>
             <div
               class="status-header-grid"
-              :class="{ 'no-stints': !hasStintData }"
+              :class="{
+                'no-stints': !hasStintData && !isPracticeSession,
+                'practice-grid': isPracticeSession,
+              }"
             >
-              <span class="header-col header-col-time">STATUS / GAP</span>
-              <span v-if="hasStintData" class="header-col header-col-stops"
-                >STOPS</span
-              >
-              <span class="header-col header-col-pts">PTS</span>
+              <template v-if="isPracticeSession">
+                <span class="header-col header-col-time">BEST LAP</span>
+                <span class="header-col header-col-stops">GAP</span>
+                <span class="header-col header-col-pts">LAPS</span>
+              </template>
+              <template v-else>
+                <span class="header-col header-col-time">STATUS / GAP</span>
+                <span v-if="hasStintData" class="header-col header-col-stops"
+                  >STOPS</span
+                >
+                <span class="header-col header-col-pts">PTS</span>
+              </template>
             </div>
           </div>
           <div class="col-stints" v-if="hasStintData">
-            TYRE STRATEGY (LAPS PER STINT)
+            {{
+              isPracticeSession
+                ? "TYRE RUNS (LAPS PER STINT)"
+                : "TYRE STRATEGY (LAPS PER STINT)"
+            }}
           </div>
         </div>
 
         <div
-          v-for="driver in sortedResults"
+          v-for="(driver, index) in sortedResults"
           :key="driver.driver_number"
           class="driver-row"
         >
           <div class="col-pos">
-            <span class="pos-num">{{ driver.position }}</span>
+            <span class="pos-num">{{
+              isPracticeSession ? index + 1 : driver.position
+            }}</span>
             <span
               v-if="
+                !isPracticeSession &&
                 driver.positions_gained !== null &&
                 driver.positions_gained !== undefined
               "
@@ -185,7 +284,11 @@ const calculatePosition = (startLap, lapCount = 1) => {
                 <span
                   v-if="driver.has_fastest_lap"
                   class="fl-pill fl-badge"
-                  title="Fastest Lap of the Race"
+                  :title="
+                    isPracticeSession
+                      ? 'Fastest Lap of the Session'
+                      : 'Fastest Lap of the Race'
+                  "
                 >
                   <F1Icon name="stopwatch" :size="12" /> FL
                 </span>
@@ -197,54 +300,90 @@ const calculatePosition = (startLap, lapCount = 1) => {
           <div class="col-status status-cell">
             <div
               class="status-metrics-row"
-              :class="{ 'no-stints': !hasStintData }"
+              :class="{
+                'no-stints': !hasStintData && !isPracticeSession,
+                'practice-grid': isPracticeSession,
+              }"
             >
-              <!-- Primary Timing / Gap / Status Badge -->
-              <div class="status-col status-col-time">
-                <span
-                  v-if="isRetired(driver)"
-                  class="status-badge"
-                  :class="'status-' + driver.status_category"
-                >
-                  {{ driver.status_badge }}
-                </span>
-                <span v-else class="finish-time">
-                  {{ driver.finish_time || driver.status || "Finished" }}
-                </span>
-              </div>
+              <template v-if="isPracticeSession">
+                <div class="status-col status-col-time">
+                  <span
+                    class="finish-time"
+                    :class="{
+                      'metric-empty': getPracticeBestTime(driver) === 'No Time',
+                    }"
+                  >
+                    {{ getPracticeBestTime(driver) }}
+                  </span>
+                </div>
+                <div class="status-col status-col-stops">
+                  <span
+                    class="practice-gap"
+                    :class="{
+                      'metric-empty': getPracticeGap(driver) === '—',
+                    }"
+                  >
+                    {{ getPracticeGap(driver) }}
+                  </span>
+                </div>
+                <div class="status-col status-col-pts">
+                  <span class="stop-badge">
+                    {{ getDriverLapCount(driver) }}
+                  </span>
+                </div>
+              </template>
+              <template v-else>
+                <!-- Primary Timing / Gap / Status Badge -->
+                <div class="status-col status-col-time">
+                  <span
+                    v-if="isRetired(driver)"
+                    class="status-badge"
+                    :class="'status-' + driver.status_category"
+                  >
+                    {{ driver.status_badge }}
+                  </span>
+                  <span v-else class="finish-time">
+                    {{ driver.finish_time || driver.status || "Finished" }}
+                  </span>
+                </div>
 
-              <!-- Pit Stops Slot (shown when session has stint/lap data) -->
-              <div v-if="hasStintData" class="status-col status-col-stops">
-                <span
-                  v-if="driver.pit_stops !== undefined && driver.pit_stops > 0"
-                  class="stop-badge stops-badge"
-                >
-                  {{ driver.pit_stops }}
-                  {{ driver.pit_stops === 1 ? "Stop" : "Stops" }}
-                </span>
-                <span
-                  v-else-if="driver.pit_stops === 0 && !isRetired(driver)"
-                  class="stop-badge stops-badge"
-                >
-                  0 Stops
-                </span>
-                <span v-else class="metric-empty" aria-hidden="true">—</span>
-              </div>
+                <!-- Pit Stops Slot (shown when session has stint/lap data) -->
+                <div v-if="hasStintData" class="status-col status-col-stops">
+                  <span
+                    v-if="
+                      driver.pit_stops !== undefined && driver.pit_stops > 0
+                    "
+                    class="stop-badge stops-badge"
+                  >
+                    {{ driver.pit_stops }}
+                    {{ driver.pit_stops === 1 ? "Stop" : "Stops" }}
+                  </span>
+                  <span
+                    v-else-if="driver.pit_stops === 0 && !isRetired(driver)"
+                    class="stop-badge stops-badge"
+                  >
+                    0 Stops
+                  </span>
+                  <span v-else class="metric-empty" aria-hidden="true">—</span>
+                </div>
 
-              <!-- Points Slot -->
-              <div class="status-col status-col-pts">
-                <span v-if="driver.points > 0" class="pts-pill points-badge">
-                  +{{ driver.points }}
-                </span>
-                <span v-else class="pts-zero metric-empty" aria-hidden="true"
-                  >—</span
-                >
-              </div>
+                <!-- Points Slot -->
+                <div class="status-col status-col-pts">
+                  <span v-if="driver.points > 0" class="pts-pill points-badge">
+                    +{{ driver.points }}
+                  </span>
+                  <span v-else class="pts-zero metric-empty" aria-hidden="true"
+                    >—</span
+                  >
+                </div>
+              </template>
             </div>
 
             <!-- Retired Status Detail (e.g., Collision, Engine - Lap 42) -->
             <div
-              v-if="isRetired(driver) && driver.status_detail"
+              v-if="
+                !isPracticeSession && isRetired(driver) && driver.status_detail
+              "
               class="status-detail-row"
             >
               <span class="status-detail-text" :title="driver.status_detail">
@@ -323,12 +462,29 @@ const calculatePosition = (startLap, lapCount = 1) => {
   -webkit-overflow-scrolling: touch;
 }
 
+.summary-content::-webkit-scrollbar {
+  height: 8px;
+}
+
+.summary-content::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+
+.summary-content::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
 .historical-note {
   padding: 1rem 1.5rem;
   background: var(--accent-color);
   color: var(--primary-color);
   font-weight: 600;
   border-bottom: 1px solid var(--border-color);
+}
+
+.historical-note p {
+  margin: 0;
 }
 
 .summary-header {
@@ -445,19 +601,30 @@ const calculatePosition = (startLap, lapCount = 1) => {
   text-align: center;
   font-size: 0.7rem;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
   padding: 1px 4px;
   border-radius: 4px;
   line-height: 1.2;
 }
 
 .pos-delta.gain {
-  color: #00d200;
-  background: rgba(0, 210, 0, 0.14);
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.14);
+}
+
+:global(html[data-theme="dark"]) .pos-delta.gain {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.14);
 }
 
 .pos-delta.loss {
-  color: #ff3b30;
-  background: rgba(255, 59, 48, 0.14);
+  color: #d9261c;
+  background: rgba(217, 38, 28, 0.12);
+}
+
+:global(html[data-theme="dark"]) .pos-delta.loss {
+  color: #ff4d42;
+  background: rgba(255, 59, 48, 0.16);
 }
 
 .pos-delta.even {
@@ -487,10 +654,16 @@ const calculatePosition = (startLap, lapCount = 1) => {
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(179, 90, 209, 0.2);
-  color: #c468e2;
-  border: 1px solid rgba(179, 90, 209, 0.4);
+  background: rgba(147, 51, 234, 0.14);
+  color: #7e22ce;
+  border: 1px solid rgba(147, 51, 234, 0.35);
   line-height: 1.2;
+}
+
+:global(html[data-theme="dark"]) .fl-pill {
+  background: rgba(179, 90, 209, 0.2);
+  color: #d48ef0;
+  border-color: rgba(179, 90, 209, 0.4);
 }
 
 .col-status {
@@ -518,6 +691,20 @@ const calculatePosition = (startLap, lapCount = 1) => {
 .status-header-grid.no-stints,
 .status-metrics-row.no-stints {
   grid-template-columns: 1fr 54px;
+}
+
+.status-header-grid.practice-grid,
+.status-metrics-row.practice-grid {
+  grid-template-columns: 96px 84px 54px;
+}
+
+.practice-gap {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-text-color);
+  white-space: nowrap;
 }
 
 .header-col {
@@ -578,6 +765,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
 
 .stop-badge {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.66rem;
   font-weight: 600;
   padding: 2px 5px;
@@ -591,22 +779,29 @@ const calculatePosition = (startLap, lapCount = 1) => {
 
 .pts-pill {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.68rem;
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 3px;
-  background: rgba(0, 210, 0, 0.15);
-  color: #00d200;
+  background: rgba(21, 128, 61, 0.14);
+  color: #15803d;
   white-space: nowrap;
   line-height: 1.2;
 }
 
+:global(html[data-theme="dark"]) .pts-pill {
+  background: rgba(74, 222, 128, 0.16);
+  color: #4ade80;
+}
+
 .metric-empty {
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--muted-text-color);
-  opacity: 0.45;
+  opacity: 0.65;
   user-select: none;
 }
 
@@ -651,9 +846,15 @@ const calculatePosition = (startLap, lapCount = 1) => {
 }
 
 .steward-pill.is-penalty {
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+  border: 1px solid rgba(217, 119, 6, 0.38);
+}
+
+:global(html[data-theme="dark"]) .steward-pill.is-penalty {
   background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .steward-pill.is-bw-flag {
@@ -774,6 +975,8 @@ const calculatePosition = (startLap, lapCount = 1) => {
 .tyre-icon {
   width: 18px;
   height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 

@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { Analytics } from "@vercel/analytics/vue";
 import F1Icon from "@/components/F1Icon.vue";
+import SeasonPicker from "@/components/SeasonPicker.vue";
 import { getLiveStatus } from "./api.js";
 import { setUnitSystem, unitSystem } from "./utils.js";
 
@@ -131,13 +132,7 @@ onUnmounted(() => {
       <div class="header-controls">
         <div class="global-year-wrapper">
           <label for="global-year-select" class="year-label">Season:</label>
-          <select
-            id="global-year-select"
-            :value="year"
-            @change="year = Number($event.target.value)"
-          >
-            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-          </select>
+          <SeasonPicker v-model="year" :years="years" />
         </div>
 
         <div class="unit-toggle" role="group" aria-label="Unit system">
@@ -145,6 +140,7 @@ onUnmounted(() => {
             type="button"
             class="unit-btn"
             :class="{ active: unitSystem === 'metric' }"
+            :aria-pressed="unitSystem === 'metric'"
             @click="setUnitSystem('metric')"
             title="Metric units (°C, km/h)"
           >
@@ -154,6 +150,7 @@ onUnmounted(() => {
             type="button"
             class="unit-btn"
             :class="{ active: unitSystem === 'imperial' }"
+            :aria-pressed="unitSystem === 'imperial'"
             @click="setUnitSystem('imperial')"
             title="Imperial units (°F, mph)"
           >
@@ -162,10 +159,15 @@ onUnmounted(() => {
         </div>
 
         <button
+          type="button"
           class="theme-toggle"
           @click="toggleTheme"
-          title="Toggle Theme"
-          aria-label="Toggle Theme"
+          :title="
+            theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'
+          "
+          :aria-label="
+            theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'
+          "
         >
           <F1Icon :name="theme === 'light' ? 'moon' : 'sun'" :size="18" />
         </button>
@@ -188,58 +190,13 @@ onUnmounted(() => {
 </template>
 
 <style>
-:root,
-html[data-theme="light"] {
-  --bg-color: #f4f4f6;
-  --card-bg-color: #ffffff;
-  --text-color: #111116;
-  --muted-text-color: #555560;
-  --primary-color: #e10600;
-  --accent-color: rgba(225, 6, 0, 0.08);
-  --border-color: #d0d0d7;
-  --input-bg-color: #ffffff;
-  --item-bg-color: #eaeaef;
-  --shadow-color: rgba(17, 17, 22, 0.07);
-}
-
-html[data-theme="dark"] {
-  --bg-color: #0a0a0e;
-  --card-bg-color: #15151e;
-  --text-color: #f1f1f6;
-  --muted-text-color: #9898a6;
-  --primary-color: #ff1801;
-  --accent-color: rgba(255, 24, 1, 0.15);
-  --border-color: #2a2a3c;
-  --input-bg-color: #1a1a24;
-  --item-bg-color: #1e1e2a;
-  --shadow-color: rgba(0, 0, 0, 0.55);
-}
-
-* {
-  box-sizing: border-box;
-}
-
 .mono {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
 }
 
 body {
-  font-family:
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  margin: 0;
   padding: 1.5rem;
-  line-height: 1.5;
-  transition:
-    background-color 0.3s ease,
-    color 0.3s ease;
 }
 
 #app-container {
@@ -253,8 +210,8 @@ body {
   border: 1px solid var(--border-color);
   position: relative;
   transition:
-    background-color 0.3s ease,
-    border-color 0.3s ease;
+    background-color 0.25s ease,
+    border-color 0.25s ease;
 }
 
 /* Header Bar */
@@ -262,8 +219,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding-bottom: 1.5rem;
+  gap: 1.25rem;
+  padding-bottom: 1.35rem;
   margin-bottom: 2rem;
   border-bottom: 1px solid var(--border-color);
   flex-wrap: wrap;
@@ -272,14 +229,19 @@ body {
 .header-brand-nav {
   display: flex;
   align-items: center;
-  gap: 2rem;
+  gap: 1.75rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .brand-link {
   text-decoration: none;
-  padding: 0;
+  padding: 0.15rem 0.25rem;
+  margin: -0.15rem -0.25rem;
+  border-radius: 6px;
   background-color: transparent;
+  display: inline-flex;
+  align-items: center;
 }
 
 .brand-link:hover {
@@ -287,29 +249,35 @@ body {
 }
 
 .brand-title {
-  font-size: 1.6rem;
+  font-size: 1.55rem;
   font-weight: 900;
+  line-height: 1.1;
   margin: 0;
   color: var(--primary-color);
   text-transform: uppercase;
-  letter-spacing: 2px;
+  letter-spacing: 0.08em;
 }
 
 .nav-tabs {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .nav-tab {
   text-decoration: none;
   color: var(--muted-text-color);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.925rem;
+  line-height: 1.25;
   padding: 0.5rem 0.85rem;
   border-radius: 6px;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s ease;
+  white-space: nowrap;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .nav-tab:hover {
@@ -354,7 +322,7 @@ body {
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .global-year-wrapper {
@@ -364,36 +332,19 @@ body {
 }
 
 .year-label {
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--muted-text-color);
 }
 
-#global-year-select {
-  padding: 0.45rem 0.85rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background-color: var(--input-bg-color);
-  color: var(--text-color);
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-}
-
-#global-year-select:focus {
-  outline: none;
-  border-color: var(--primary-color);
-}
-
 .unit-toggle {
   display: inline-flex;
+  align-items: center;
+  height: 38px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
   background: var(--item-bg-color);
-  padding: 2px;
+  padding: 3px;
   gap: 2px;
   flex-shrink: 0;
 }
@@ -402,12 +353,20 @@ body {
   border: none;
   background: transparent;
   color: var(--muted-text-color);
-  font-size: 0.78rem;
+  font-family: inherit;
+  font-size: 0.8rem;
   font-weight: 700;
-  padding: 0.34rem 0.6rem;
+  height: 100%;
+  padding: 0 0.65rem;
   border-radius: 5px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
   white-space: nowrap;
 }
 
@@ -426,21 +385,28 @@ body {
   border: 1px solid var(--border-color);
   color: var(--text-color);
   cursor: pointer;
-  border-radius: 8px;
-  width: 40px;
-  height: 40px;
-  font-size: 1.1rem;
-  display: flex;
+  border-radius: 7px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.15s ease;
   flex-shrink: 0;
 }
 
 .theme-toggle:hover {
   background-color: var(--accent-color);
   border-color: var(--primary-color);
-  transform: scale(1.05);
+  color: var(--primary-color);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
 }
 
 .app-main {
@@ -462,7 +428,7 @@ body {
   .app-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 1rem;
+    gap: 0.85rem;
     padding-bottom: 1rem;
     margin-bottom: 1.5rem;
   }
@@ -470,7 +436,7 @@ body {
   .header-brand-nav {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.85rem;
+    gap: 0.75rem;
     width: 100%;
   }
 
@@ -484,26 +450,45 @@ body {
     white-space: nowrap;
     padding-bottom: 0.25rem;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
     gap: 0.35rem;
   }
 
+  .nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
   .nav-tab {
-    padding: 0.4rem 0.65rem;
+    padding: 0.45rem 0.7rem;
     font-size: 0.875rem;
     flex-shrink: 0;
   }
 
   .header-controls {
     justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 0.45rem;
     width: 100%;
-    padding-top: 0.5rem;
+    padding-top: 0.75rem;
     border-top: 1px solid var(--border-color);
+  }
+
+  .year-label {
+    font-size: 0.8rem;
+  }
+
+  .unit-toggle {
+    height: 36px;
+  }
+
+  .unit-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
   }
 
   .theme-toggle {
     width: 36px;
     height: 36px;
-    font-size: 1rem;
   }
 }
 </style>

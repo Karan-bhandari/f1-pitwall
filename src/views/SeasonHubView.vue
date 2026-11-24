@@ -347,42 +347,43 @@ function formatDate(dateStr) {
           v-if="seasonStats.latest_round"
           class="pulse-card latest-round-card"
         >
-          <div class="pulse-card-header">
-            <div class="badge-row">
-              <span class="round-badge">
-                LATEST COMPLETED ROUND · R{{ seasonStats.latest_round.round }}
-              </span>
-              <span class="event-date" v-if="seasonStats.latest_round.date">
-                {{ formatDate(seasonStats.latest_round.date) }}
-              </span>
+          <div class="latest-round-head">
+            <div class="pulse-card-header">
+              <div class="badge-row">
+                <span class="round-badge">
+                  LATEST COMPLETED ROUND · R{{ seasonStats.latest_round.round }}
+                </span>
+                <span class="event-date" v-if="seasonStats.latest_round.date">
+                  {{ formatDate(seasonStats.latest_round.date) }}
+                </span>
+              </div>
+              <RouterLink
+                :to="{
+                  path: '/race',
+                  query: {
+                    year: props.year,
+                    round: seasonStats.latest_round.round,
+                    event: seasonStats.latest_round.event_key,
+                    session: 'Weekend Recap',
+                  },
+                }"
+                class="pitwall-jump-btn"
+              >
+                <span>Inspect Race PitWall</span>
+                <span class="arrow-glyph">→</span>
+              </RouterLink>
             </div>
-            <RouterLink
-              :to="{
-                path: '/race',
-                query: {
-                  year: props.year,
-                  round: seasonStats.latest_round.round,
-                  event: seasonStats.latest_round.event_key,
-                  session: 'Weekend Recap',
-                },
-              }"
-              class="pitwall-jump-btn"
+
+            <h2
+              class="pulse-event-title"
+              :title="seasonStats.latest_round.event_name"
             >
-              <span>Inspect Race PitWall</span>
-              <span class="arrow-glyph">→</span>
-            </RouterLink>
+              {{ seasonStats.latest_round.event_name }}
+            </h2>
           </div>
 
-          <h2
-            class="pulse-event-title"
-            :title="seasonStats.latest_round.event_name"
-          >
-            {{ seasonStats.latest_round.event_name }}
-          </h2>
-
-          <!-- Podium Strip: 3 equal-height horizontal boxes -->
           <div
-            class="podium-strip"
+            class="podium-list"
             v-if="
               seasonStats.latest_round.podium &&
               seasonStats.latest_round.podium.length
@@ -391,8 +392,8 @@ function formatDate(dateStr) {
             <div
               v-for="driver in seasonStats.latest_round.podium"
               :key="driver.position + driver.driver_code"
-              class="podium-box"
-              :class="`podium-box-${driver.position}`"
+              class="podium-row"
+              :class="`podium-row-${driver.position}`"
             >
               <div
                 class="podium-pos-badge"
@@ -400,23 +401,22 @@ function formatDate(dateStr) {
               >
                 P{{ driver.position }}
               </div>
-              <div
-                class="podium-color-bar"
-                :style="{
-                  backgroundColor: `#${driver.team_color || 'e10600'}`,
-                }"
-              ></div>
-              <div class="podium-details">
-                <div class="driver-name" :title="driver.driver_name">
+              <div class="podium-driver-main">
+                <span
+                  class="podium-team-dot"
+                  :style="{
+                    backgroundColor: `#${driver.team_color || 'e10600'}`,
+                  }"
+                ></span>
+                <span class="podium-driver-name" :title="driver.driver_name">
                   {{ driver.driver_name }}
-                </div>
-                <div class="driver-meta-row">
-                  <span class="driver-code mono">{{ driver.driver_code }}</span>
-                  <span class="meta-sep">·</span>
-                  <span class="team-name" :title="driver.team_name">
-                    {{ driver.team_name }}
-                  </span>
-                </div>
+                </span>
+              </div>
+              <div class="podium-right-meta">
+                <span class="podium-team-label" :title="driver.team_name">
+                  {{ driver.team_name }}
+                </span>
+                <span class="podium-code-pill">{{ driver.driver_code }}</span>
               </div>
             </div>
           </div>
@@ -660,7 +660,7 @@ function formatDate(dateStr) {
   box-shadow: 0 4px 16px var(--shadow-color);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 1rem;
   overflow: hidden;
 }
@@ -700,10 +700,16 @@ function formatDate(dateStr) {
   border-color: rgba(225, 6, 0, 0.25);
 }
 
+.mono {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .event-date {
   font-size: 0.8rem;
   color: var(--muted-text-color);
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .pitwall-jump-btn {
@@ -729,6 +735,11 @@ function formatDate(dateStr) {
   box-shadow: 0 2px 8px rgba(225, 6, 0, 0.3);
 }
 
+.pitwall-jump-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .arrow-glyph {
   font-weight: 800;
   transition: transform 0.15s ease;
@@ -741,30 +752,52 @@ function formatDate(dateStr) {
 .pulse-event-title {
   font-size: 1.35rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--text-color);
   margin: 0;
   line-height: 1.25;
 }
 
-/* --- Podium Strip --- */
-.podium-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.65rem;
-  width: 100%;
+/* --- Podium Classification List --- */
+.latest-round-card {
+  height: 100%;
+  box-sizing: border-box;
+  gap: 0.9rem;
 }
 
-.podium-box {
-  min-height: 62px;
+.latest-round-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.podium-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.podium-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
   background: var(--item-bg-color);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 0.5rem 0.6rem;
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  overflow: hidden;
-  box-sizing: border-box;
+  flex: 1;
+}
+
+.podium-row-1 {
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--item-bg-color));
+  border-color: color-mix(
+    in srgb,
+    var(--primary-color) 28%,
+    var(--border-color)
+  );
 }
 
 .podium-pos-badge {
@@ -778,6 +811,7 @@ function formatDate(dateStr) {
   font-weight: 800;
   font-size: 0.78rem;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
 
@@ -802,59 +836,57 @@ function formatDate(dateStr) {
   box-shadow: 0 2px 8px rgba(205, 127, 50, 0.35);
 }
 
-.podium-color-bar {
-  width: 4px;
-  height: 32px;
-  border-radius: 2px;
+.podium-driver-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.podium-team-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
   flex-shrink: 0;
 }
 
-.podium-details {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-  flex: 1;
-}
-
-.driver-name {
-  font-size: 0.82rem;
+.podium-driver-name {
+  font-size: 0.94rem;
   font-weight: 700;
   color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.22;
 }
 
-.driver-meta-row {
+.podium-row-1 .podium-driver-name {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.podium-right-meta {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  min-width: 0;
-  margin-top: 0.1rem;
+  gap: 0.55rem;
+  flex-shrink: 0;
 }
 
-.driver-code {
-  font-size: 0.72rem;
+.podium-team-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-text-color);
+}
+
+.podium-code-pill {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.74rem;
   font-weight: 800;
   color: var(--text-color);
-  flex-shrink: 0;
-}
-
-.meta-sep {
-  font-size: 0.72rem;
-  color: var(--muted-text-color);
-  opacity: 0.6;
-  flex-shrink: 0;
-}
-
-.team-name {
-  font-size: 0.72rem;
-  color: var(--muted-text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  padding: 0.18rem 0.45rem;
+  border-radius: 5px;
 }
 
 /* --- Next Round Specifics --- */
@@ -862,13 +894,17 @@ function formatDate(dateStr) {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.14);
+  color: #9a4e00;
+  border: 1px solid rgba(245, 158, 11, 0.3);
   font-size: 0.74rem;
   font-weight: 700;
   padding: 0.2rem 0.55rem;
   border-radius: 4px;
+}
+
+:global(html[data-theme="dark"]) .sprint-pill {
+  color: #fbbf24;
 }
 
 .remaining-rounds-pill {
@@ -968,6 +1004,7 @@ function formatDate(dateStr) {
   border: none;
   background: transparent;
   color: var(--muted-text-color);
+  font-family: inherit;
   font-size: 0.7rem;
   font-weight: 700;
   padding: 0.2rem 0.5rem;
@@ -979,6 +1016,11 @@ function formatDate(dateStr) {
 
 .tz-btn:hover {
   color: var(--text-color);
+}
+
+.tz-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
 }
 
 .tz-btn.active {
@@ -1000,6 +1042,10 @@ function formatDate(dateStr) {
   font-size: 0.78rem;
   padding: 0.22rem 0;
   border-bottom: 1px dashed var(--border-color);
+}
+
+.weekend-session-row:last-child {
+  border-bottom: none;
 }
 
 .weekend-session-row.is-key-session .sess-name {
@@ -1064,6 +1110,7 @@ function formatDate(dateStr) {
 .progression-title {
   font-size: 1.35rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--text-color);
   margin: 0;
   line-height: 1.2;
@@ -1095,6 +1142,7 @@ function formatDate(dateStr) {
   border: none;
   padding: 0.45rem 0.85rem;
   border-radius: 6px;
+  font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -1103,6 +1151,11 @@ function formatDate(dateStr) {
 
 .chart-toggle-btn:hover {
   color: var(--text-color);
+}
+
+.chart-toggle-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .chart-toggle-btn.active {
@@ -1140,6 +1193,7 @@ function formatDate(dateStr) {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  font-family: inherit;
   font-size: 0.8rem;
   color: var(--text-color);
 }
@@ -1148,6 +1202,11 @@ function formatDate(dateStr) {
   background: var(--card-bg-color);
   border-color: var(--primary-color);
   transform: translateY(-1px);
+}
+
+.legend-pill:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .legend-pill.is-hidden {
@@ -1221,6 +1280,14 @@ function formatDate(dateStr) {
 
   .progression-card {
     padding: 1.1rem;
+  }
+
+  .pulse-card {
+    padding: 1rem 1.1rem;
+  }
+
+  .custom-chart-legend {
+    padding: 0.85rem 0 0.25rem;
   }
 }
 </style>

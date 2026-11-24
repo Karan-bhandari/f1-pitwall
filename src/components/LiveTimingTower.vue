@@ -118,7 +118,14 @@ const paddedSectors = (driver) => {
     </div>
 
     <div v-if="!standings.length" class="tower-empty">
-      No driver timing data available for this session yet.
+      <p class="tower-empty-title">No timing data yet</p>
+      <p class="tower-empty-sub">
+        {{
+          isLive
+            ? "Classification will populate once drivers complete a timed sector or leave the pit lane."
+            : "Session standings are not yet available. Use Refresh to check for updates."
+        }}
+      </p>
     </div>
 
     <div
@@ -419,14 +426,35 @@ const paddedSectors = (driver) => {
 }
 
 .bs-time {
-  color: #a855f7;
+  color: #7e22ce;
   font-weight: 700;
 }
 
+html[data-theme="dark"] .bs-time {
+  color: #c084fc;
+}
+
 .tower-empty {
-  padding: 2rem 1rem;
+  padding: 2.5rem 1.25rem;
   text-align: center;
   color: var(--muted-text-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tower-empty-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.tower-empty-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  max-width: 44ch;
 }
 
 .table-wrapper {
@@ -495,12 +523,13 @@ tbody tr:hover th {
   position: sticky;
   inset-inline-start: 0;
   z-index: 2;
-  min-width: 52px;
+  width: 68px;
+  min-width: 68px;
 }
 
 .sticky-driver {
   position: sticky;
-  inset-inline-start: 52px;
+  inset-inline-start: 68px;
   z-index: 2;
 }
 
@@ -530,16 +559,16 @@ thead .sticky-driver {
 }
 .badge-pit {
   background: rgba(56, 189, 248, 0.18);
-  color: #0284c7;
+  color: #0369a1;
 }
 .badge-out {
   background: rgba(34, 197, 94, 0.16);
-  color: #16a34a;
+  color: #15803d;
 }
 .badge-dnf,
 .badge-stop {
   background: rgba(225, 6, 0, 0.16);
-  color: var(--primary-color);
+  color: #b91c1c;
 }
 .badge-dns,
 .badge-ko {
@@ -552,6 +581,10 @@ html[data-theme="dark"] .badge-pit {
 }
 html[data-theme="dark"] .badge-out {
   color: #4ade80;
+}
+html[data-theme="dark"] .badge-dnf,
+html[data-theme="dark"] .badge-stop {
+  color: #fca5a5;
 }
 
 .driver-cell {
@@ -610,8 +643,12 @@ html[data-theme="dark"] .badge-out {
   font-weight: 800;
   padding: 0.08rem 0.3rem;
   border-radius: 4px;
-  background: rgba(168, 85, 247, 0.18);
-  color: #a855f7;
+  background: rgba(168, 85, 247, 0.16);
+  color: #7e22ce;
+}
+
+html[data-theme="dark"] .fl-badge {
+  color: #c084fc;
 }
 
 .leader-pill {
@@ -620,22 +657,34 @@ html[data-theme="dark"] .badge-out {
   padding: 0.12rem 0.38rem;
   border-radius: 4px;
   background: var(--accent-color);
-  color: var(--primary-color);
+  color: #b91c1c;
   letter-spacing: 0.4px;
 }
 
+html[data-theme="dark"] .leader-pill {
+  color: #ff6b5b;
+}
+
 .catching-gap {
-  color: #22c55e;
+  color: #15803d;
   font-weight: 700;
+}
+
+html[data-theme="dark"] .catching-gap {
+  color: #4ade80;
 }
 
 .time-purple {
-  color: #a855f7;
+  color: #7e22ce;
   font-weight: 700;
 }
 
+html[data-theme="dark"] .time-purple {
+  color: #c084fc;
+}
+
 .time-green {
-  color: #16a34a;
+  color: #15803d;
   font-weight: 700;
 }
 html[data-theme="dark"] .time-green {
@@ -716,7 +765,7 @@ html[data-theme="dark"] .time-green {
 }
 .fresh-new {
   background: rgba(34, 197, 94, 0.16);
-  color: #16a34a;
+  color: #15803d;
 }
 .fresh-used {
   background: var(--item-bg-color);
@@ -730,7 +779,7 @@ html[data-theme="dark"] .fresh-new {
 .row-retired th,
 .row-knocked-out td,
 .row-knocked-out th {
-  opacity: 0.62;
+  opacity: 0.72;
 }
 
 .row-cutoff td,
@@ -751,16 +800,13 @@ html[data-theme="dark"] .fresh-new {
 }
 
 @media (max-width: 768px) {
-  .tower-legend {
-    display: none;
-  }
-
   .sticky-pos {
-    min-width: 48px;
+    width: 62px;
+    min-width: 62px;
   }
 
   .sticky-driver {
-    inset-inline-start: 48px;
+    inset-inline-start: 62px;
   }
 
   .driver-cell {

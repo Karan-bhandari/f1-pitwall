@@ -1,53 +1,40 @@
-/* color palette from <https://github.com/vuejs/theme> */
-:root {
-  --vt-c-white: #ffffff;
-  --vt-c-white-soft: #f8f8f8;
-  --vt-c-white-mute: #f2f2f2;
+/* F1 PitWall — Global Theme Tokens & Browser Surface Defaults */
 
-  --vt-c-black: #181818;
-  --vt-c-black-soft: #222222;
-  --vt-c-black-mute: #282828;
-
-  --vt-c-indigo: #2c3e50;
-
-  --vt-c-divider-light-1: rgba(60, 60, 60, 0.29);
-  --vt-c-divider-light-2: rgba(60, 60, 60, 0.12);
-  --vt-c-divider-dark-1: rgba(84, 84, 84, 0.65);
-  --vt-c-divider-dark-2: rgba(84, 84, 84, 0.48);
-
-  --vt-c-text-light-1: var(--vt-c-indigo);
-  --vt-c-text-light-2: rgba(60, 60, 60, 0.66);
-  --vt-c-text-dark-1: var(--vt-c-white);
-  --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
+:root,
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-color: #f4f4f6;
+  --card-bg-color: #ffffff;
+  --text-color: #111116;
+  --muted-text-color: #555560;
+  --primary-color: #e10600;
+  --accent-color: rgba(225, 6, 0, 0.08);
+  --border-color: #d0d0d7;
+  --input-bg-color: #ffffff;
+  --item-bg-color: #eaeaef;
+  --shadow-color: rgba(17, 17, 22, 0.07);
+  --selection-bg: rgba(225, 6, 0, 0.16);
+  --selection-text: #111116;
+  --scrollbar-thumb: #c2c2cc;
+  --scrollbar-thumb-hover: #9898a6;
 }
 
-/* semantic color variables for this project */
-:root {
-  --color-background: var(--vt-c-white);
-  --color-background-soft: var(--vt-c-white-soft);
-  --color-background-mute: var(--vt-c-white-mute);
-
-  --color-border: var(--vt-c-divider-light-2);
-  --color-border-hover: var(--vt-c-divider-light-1);
-
-  --color-heading: var(--vt-c-text-light-1);
-  --color-text: var(--vt-c-text-light-1);
-
-  --section-gap: 160px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-background: var(--vt-c-black);
-    --color-background-soft: var(--vt-c-black-soft);
-    --color-background-mute: var(--vt-c-black-mute);
-
-    --color-border: var(--vt-c-divider-dark-2);
-    --color-border-hover: var(--vt-c-divider-dark-1);
-
-    --color-heading: var(--vt-c-text-dark-1);
-    --color-text: var(--vt-c-text-dark-2);
-  }
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-color: #0a0a0e;
+  --card-bg-color: #15151e;
+  --text-color: #f1f1f6;
+  --muted-text-color: #9898a6;
+  --primary-color: #ff1801;
+  --accent-color: rgba(255, 24, 1, 0.15);
+  --border-color: #2a2a3c;
+  --input-bg-color: #1a1a24;
+  --item-bg-color: #1e1e2a;
+  --shadow-color: rgba(0, 0, 0, 0.55);
+  --selection-bg: rgba(255, 24, 1, 0.28);
+  --selection-text: #ffffff;
+  --scrollbar-thumb: #343448;
+  --scrollbar-thumb-hover: #52526b;
 }
 
 *,
@@ -55,32 +42,77 @@
 *::after {
   box-sizing: border-box;
   margin: 0;
-  font-weight: normal;
+}
+
+html {
+  caret-color: var(--primary-color);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 body {
   min-height: 100vh;
-  color: var(--color-text);
-  background: var(--color-background);
-  transition:
-    color 0.5s,
-    background-color 0.5s;
-  line-height: 1.6;
+  color: var(--text-color);
+  background-color: var(--bg-color);
   font-family:
-    Inter,
+    "Inter",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    "Fira Sans",
-    "Droid Sans",
-    "Helvetica Neue",
     sans-serif;
   font-size: 15px;
+  line-height: 1.5;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition:
+    color 0.25s ease,
+    background-color 0.25s ease;
+}
+
+::selection {
+  background-color: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

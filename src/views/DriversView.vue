@@ -243,7 +243,17 @@ function getDeltaClass(delta) {
       <!-- SECTION 1: Driver Grid -->
       <section v-if="activeSection === 'grid'" class="driver-grid-section">
         <div v-if="filteredDrivers.length === 0" class="empty-filter">
-          <p>No drivers found matching "{{ searchQuery }}".</p>
+          <p v-if="searchQuery.trim()">
+            No drivers found matching "{{ searchQuery }}".
+          </p>
+          <p v-else>No driver standings available for {{ year }}.</p>
+          <button
+            v-if="searchQuery.trim()"
+            class="reset-filter-btn"
+            @click="searchQuery = ''"
+          >
+            Reset Search
+          </button>
         </div>
 
         <div v-else class="driver-cards-container">
@@ -354,9 +364,7 @@ function getDeltaClass(delta) {
                   <F1Icon name="checkered-flag" :size="12" />
                   <span>
                     {{ driver.races_entered }}
-                    {{
-                      driver.races_entered === 1 ? "GP Entry" : "GP Entries"
-                    }}
+                    {{ driver.races_entered === 1 ? "GP Entry" : "GP Entries" }}
                     · Best P{{ driver.best_finish ?? "—" }}
                   </span>
                 </span>
@@ -414,9 +422,7 @@ function getDeltaClass(delta) {
                     >
                   </div>
                   <span class="metric-subtext">
-                    {{ driver.classified_finishes }}/{{
-                      driver.races_entered
-                    }}
+                    {{ driver.classified_finishes }}/{{ driver.races_entered }}
                     Finishes
                     <template v-if="driver.dnfs > 0">
                       ({{ driver.dnfs }} DNF{{ driver.dnfs > 1 ? "s" : "" }})
@@ -477,7 +483,17 @@ function getDeltaClass(delta) {
       <!-- SECTION 2: Teammate Head-to-Head -->
       <section v-else-if="activeSection === 'h2h'" class="h2h-matrix-section">
         <div v-if="filteredBattles.length === 0" class="empty-filter">
-          <p>No teammate battles found matching "{{ searchQuery }}".</p>
+          <p v-if="searchQuery.trim()">
+            No teammate battles found matching "{{ searchQuery }}".
+          </p>
+          <p v-else>No teammate battles available for {{ year }}.</p>
+          <button
+            v-if="searchQuery.trim()"
+            class="reset-filter-btn"
+            @click="searchQuery = ''"
+          >
+            Reset Search
+          </button>
         </div>
 
         <div v-else class="h2h-cards-grid">
@@ -512,6 +528,8 @@ function getDeltaClass(delta) {
                 <div
                   class="h2h-driver-col driver-1"
                   @click="openDriverModal(battle.driver1)"
+                  @keydown.enter="openDriverModal(battle.driver1)"
+                  @keydown.space.prevent="openDriverModal(battle.driver1)"
                   role="button"
                   tabindex="0"
                   :title="`View profile for ${battle.driver1.driver_name}`"
@@ -537,6 +555,8 @@ function getDeltaClass(delta) {
                 <div
                   class="h2h-driver-col driver-2"
                   @click="openDriverModal(battle.driver2)"
+                  @keydown.enter="openDriverModal(battle.driver2)"
+                  @keydown.space.prevent="openDriverModal(battle.driver2)"
                   role="button"
                   tabindex="0"
                   :title="`View profile for ${battle.driver2.driver_name}`"
@@ -683,6 +703,8 @@ function getDeltaClass(delta) {
                     :key="sub.driver_id"
                     class="sub-pill"
                     @click="openDriverModal(sub)"
+                    @keydown.enter="openDriverModal(sub)"
+                    @keydown.space.prevent="openDriverModal(sub)"
                     role="button"
                     tabindex="0"
                   >
@@ -708,7 +730,12 @@ function getDeltaClass(delta) {
         class="modal-backdrop"
         @click.self="closeDriverModal"
       >
-        <div class="modal-card" role="dialog" aria-modal="true">
+        <div
+          class="modal-card"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`${selectedDriver.driver_name} Driver Profile`"
+        >
           <!-- Team Color Top Bar -->
           <div
             class="modal-team-accent"
@@ -939,6 +966,11 @@ function getDeltaClass(delta) {
   box-sizing: border-box;
 }
 
+.mono {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ==========================================================================
    PAGE HEADER & CONTROLS
    ========================================================================== */
@@ -1016,6 +1048,7 @@ function getDeltaClass(delta) {
   border: none;
   background: transparent;
   color: var(--muted-text-color);
+  font-family: inherit;
   font-size: 0.88rem;
   font-weight: 600;
   border-radius: 7px;
@@ -1027,6 +1060,11 @@ function getDeltaClass(delta) {
   color: var(--text-color);
 }
 
+.toggle-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .toggle-btn.active {
   background: var(--card-bg-color);
   color: var(--primary-color);
@@ -1036,6 +1074,7 @@ function getDeltaClass(delta) {
 .count-pill {
   font-size: 0.75rem;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   padding: 0.1rem 0.45rem;
   border-radius: 9999px;
   background: var(--accent-color);
@@ -1077,10 +1116,16 @@ function getDeltaClass(delta) {
   display: flex;
   align-items: center;
   padding: 0.2rem;
+  border-radius: 4px;
 }
 
 .clear-search:hover {
   color: var(--text-color);
+}
+
+.clear-search:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* ==========================================================================
@@ -1129,9 +1174,15 @@ function getDeltaClass(delta) {
   color: #fff;
   border: none;
   padding: 0.6rem 1.4rem;
+  font-family: inherit;
   font-weight: 700;
   border-radius: 8px;
   cursor: pointer;
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .empty-filter {
@@ -1142,6 +1193,29 @@ function getDeltaClass(delta) {
   background: var(--card-bg-color);
   border: 1px dashed var(--border-color);
   border-radius: 12px;
+}
+
+.reset-filter-btn {
+  margin-top: 1rem;
+  background: var(--item-bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  padding: 0.45rem 1rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.reset-filter-btn:hover {
+  border-color: var(--primary-color);
+}
+
+.reset-filter-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* ==========================================================================
@@ -1177,6 +1251,7 @@ function getDeltaClass(delta) {
 
 .driver-card:focus-visible {
   outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* Team Accent Strip */
@@ -1219,6 +1294,7 @@ function getDeltaClass(delta) {
   font-size: 0.88rem;
   font-weight: 800;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   padding: 0 0.5rem;
   border-radius: 8px;
   background: var(--item-bg-color);
@@ -1271,6 +1347,7 @@ function getDeltaClass(delta) {
   font-size: 0.85rem;
   font-weight: 700;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--muted-text-color);
 }
 
@@ -1305,6 +1382,7 @@ function getDeltaClass(delta) {
   font-size: 1.35rem;
   font-weight: 800;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--text-color);
   line-height: 1.1;
 }
@@ -1318,19 +1396,29 @@ function getDeltaClass(delta) {
 .points-share {
   font-size: 0.74rem;
   color: var(--muted-text-color);
+  font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
 
 .gap-val {
   font-size: 0.74rem;
   font-family: "JetBrains Mono", monospace;
-  color: #ef4444;
+  font-variant-numeric: tabular-nums;
+  color: #dc2626;
   line-height: 1.2;
 }
 
+:global(html[data-theme="dark"]) .gap-val {
+  color: #f87171;
+}
+
 .gap-val.is-leader {
-  color: #d4a800;
+  color: #8a6800;
   font-weight: 700;
+}
+
+:global(html[data-theme="dark"]) .gap-val.is-leader {
+  color: #facc15;
 }
 
 /* Milestones Row */
@@ -1362,27 +1450,43 @@ function getDeltaClass(delta) {
 }
 
 .pill-wins {
-  background: rgba(255, 215, 0, 0.15);
-  color: #b89700;
-  border-color: rgba(255, 215, 0, 0.35);
+  background: rgba(255, 215, 0, 0.16);
+  color: #8a6800;
+  border-color: rgba(255, 215, 0, 0.38);
+}
+
+:global(html[data-theme="dark"]) .pill-wins {
+  color: #facc15;
 }
 
 .pill-podiums {
   background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  color: #047857;
   border-color: rgba(16, 185, 129, 0.3);
+}
+
+:global(html[data-theme="dark"]) .pill-podiums {
+  color: #34d399;
 }
 
 .pill-poles {
   background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
+  color: #4f46e5;
   border-color: rgba(99, 102, 241, 0.3);
 }
 
+:global(html[data-theme="dark"]) .pill-poles {
+  color: #818cf8;
+}
+
 .pill-fl {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+  color: #9a4e00;
   border-color: rgba(245, 158, 11, 0.3);
+}
+
+:global(html[data-theme="dark"]) .pill-fl {
+  color: #fbbf24;
 }
 
 /* Metrics Grid (Core 4) */
@@ -1448,12 +1552,20 @@ function getDeltaClass(delta) {
 
 .delta-pos {
   background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  color: #047857;
+}
+
+:global(html[data-theme="dark"]) .delta-pos {
+  color: #34d399;
 }
 
 .delta-neg {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: #dc2626;
+}
+
+:global(html[data-theme="dark"]) .delta-neg {
+  color: #f87171;
 }
 
 .delta-neutral {
@@ -1488,7 +1600,11 @@ function getDeltaClass(delta) {
 }
 
 .spotlight-tier-contender .spotlight-label {
-  color: #b89700;
+  color: #8a6800;
+}
+
+:global(html[data-theme="dark"]) .spotlight-tier-contender .spotlight-label {
+  color: #facc15;
 }
 
 .spotlight-tier-midfield {
@@ -1501,7 +1617,11 @@ function getDeltaClass(delta) {
 }
 
 .spotlight-tier-midfield .spotlight-label {
-  color: #10b981;
+  color: #047857;
+}
+
+:global(html[data-theme="dark"]) .spotlight-tier-midfield .spotlight-label {
+  color: #34d399;
 }
 
 /* Season Form Strip */
@@ -1526,7 +1646,7 @@ function getDeltaClass(delta) {
   font-size: 0.68rem;
   text-transform: none;
   font-weight: normal;
-  opacity: 0.7;
+  color: var(--muted-text-color);
 }
 
 .form-strip {
@@ -1550,6 +1670,7 @@ function getDeltaClass(delta) {
   font-size: 0.7rem;
   font-weight: 800;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   overflow: hidden;
   transition: transform 0.15s ease;
@@ -1570,9 +1691,13 @@ function getDeltaClass(delta) {
 }
 
 .form-points {
-  background: rgba(16, 185, 129, 0.25);
-  color: #10b981;
+  background: rgba(16, 185, 129, 0.22);
+  color: #047857;
   border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+:global(html[data-theme="dark"]) .form-points {
+  color: #34d399;
 }
 
 .form-outside {
@@ -1636,6 +1761,7 @@ function getDeltaClass(delta) {
   font-size: 0.85rem;
   font-weight: 800;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   background: var(--item-bg-color);
   border: 1px solid var(--border-color);
   padding: 0.2rem 0.5rem;
@@ -1682,12 +1808,19 @@ function getDeltaClass(delta) {
   text-align: left;
   gap: 0.2rem;
   min-width: 0;
+  border-radius: 6px;
+  padding: 0.2rem 0.25rem;
   cursor: pointer;
   transition: transform 0.15s;
 }
 
 .h2h-driver-col:hover {
   transform: translateY(-2px);
+}
+
+.h2h-driver-col:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .h2h-driver-col.driver-2 {
@@ -1723,6 +1856,7 @@ function getDeltaClass(delta) {
   color: var(--text-color);
   font-weight: 600;
   margin: 0.1rem 0;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1847,6 +1981,11 @@ function getDeltaClass(delta) {
 
 .sub-pill:hover {
   border-color: var(--primary-color);
+}
+
+.sub-pill:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .sub-stat {
@@ -1990,6 +2129,7 @@ function getDeltaClass(delta) {
   font-size: 0.95rem;
   font-weight: 800;
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--muted-text-color);
 }
 
@@ -2030,6 +2170,11 @@ function getDeltaClass(delta) {
 .modal-close-btn:hover {
   background: var(--primary-color);
   color: #fff;
+}
+
+.modal-close-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* Modal Sections */
@@ -2086,7 +2231,11 @@ function getDeltaClass(delta) {
 }
 
 .honour-box.highlight-gold .honour-val {
-  color: #b89700;
+  color: #8a6800;
+}
+
+:global(html[data-theme="dark"]) .honour-box.highlight-gold .honour-val {
+  color: #facc15;
 }
 
 .honour-label {
@@ -2182,6 +2331,7 @@ function getDeltaClass(delta) {
 .race-log-table .col-delta,
 .race-log-table .col-pts {
   text-align: center;
+  white-space: nowrap;
 }
 
 .race-log-table tr:last-child td {
@@ -2211,7 +2361,11 @@ function getDeltaClass(delta) {
 
 .badge-points {
   background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  color: #047857;
+}
+
+:global(html[data-theme="dark"]) .badge-points {
+  color: #34d399;
 }
 
 .badge-outside {
@@ -2242,8 +2396,12 @@ function getDeltaClass(delta) {
 }
 
 .status-dnf {
-  color: #ef4444;
+  color: #dc2626;
   font-weight: 600;
+}
+
+:global(html[data-theme="dark"]) .status-dnf {
+  color: #f87171;
 }
 
 .status-dns {
@@ -2323,6 +2481,9 @@ function getDeltaClass(delta) {
 
   .modal-header {
     flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
   }
 
   .modal-close-btn {

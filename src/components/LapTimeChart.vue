@@ -16,6 +16,7 @@ const props = defineProps({
 let chartInstance = null;
 
 const renderChart = (data) => {
+  if (!data || !data.driver1) return;
   const ctx = document.getElementById("lap-time-chart-canvas");
   if (!ctx) return;
   if (chartInstance) {
@@ -27,17 +28,27 @@ const renderChart = (data) => {
     return `#${color.replace("#", "")}`;
   };
 
+  const hasDistinctDriver2 = Boolean(
+    data.driver2 &&
+    String(data.driver2.driver_number) !== String(data.driver1.driver_number),
+  );
+
   const driver1Color = formatTeamColor(data.driver1.team_color) || "#ff0000";
-  let driver2Color = formatTeamColor(data.driver2.team_color) || "#0000ff";
+  let driver2Color = hasDistinctDriver2
+    ? formatTeamColor(data.driver2.team_color) || "#0000ff"
+    : null;
 
   // Simple same-team check
-  if (driver1Color.toLowerCase() === driver2Color.toLowerCase()) {
+  if (
+    hasDistinctDriver2 &&
+    driver1Color.toLowerCase() === driver2Color.toLowerCase()
+  ) {
     // Lighten the second driver's color
     driver2Color = adjustColor(driver1Color, 40);
   }
 
   const driver1Laps = data.driver1.laps;
-  const driver2Laps = data.driver2.laps;
+  const driver2Laps = hasDistinctDriver2 ? data.driver2.laps : [];
 
   const allLaps = [...driver1Laps, ...driver2Laps].filter(
     (l) => l.lap_time_seconds,
@@ -59,9 +70,9 @@ const renderChart = (data) => {
   const driver1PitStops = driver1Laps
     .filter((l) => l.pit_in_time)
     .map((l) => l.lap_number);
-  const driver2PitStops = driver2Laps
-    .filter((l) => l.pit_in_time)
-    .map((l) => l.lap_number);
+  const driver2PitStops = hasDistinctDriver2
+    ? driver2Laps.filter((l) => l.pit_in_time).map((l) => l.lap_number)
+    : [];
 
   // Calculate Y-Axis Limits based on min lap time
   let yMin = undefined;
@@ -104,7 +115,9 @@ const renderChart = (data) => {
       };
 
       drawLines(driver1PitStops, driver1Color);
-      drawLines(driver2PitStops, driver2Color);
+      if (hasDistinctDriver2) {
+        drawLines(driver2PitStops, driver2Color);
+      }
     },
   };
 
@@ -120,11 +133,18 @@ const renderChart = (data) => {
       tooltipEl.style.pointerEvents = "none";
       tooltipEl.style.position = "absolute";
       tooltipEl.style.transform = "translate(-50%, 0)";
-      tooltipEl.style.transition = "all .1s ease";
-      tooltipEl.style.background = "rgba(0, 0, 0, 0.8)";
-      tooltipEl.style.borderRadius = "3px";
-      tooltipEl.style.color = "white";
-      tooltipEl.style.padding = "6px";
+      tooltipEl.style.transition = "opacity 0.12s ease, transform 0.12s ease";
+      tooltipEl.style.background = "rgba(15, 15, 20, 0.92)";
+      tooltipEl.style.backdropFilter = "blur(8px)";
+      tooltipEl.style.border = "1px solid rgba(255, 255, 255, 0.14)";
+      tooltipEl.style.borderRadius = "8px";
+      tooltipEl.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.35)";
+      tooltipEl.style.color = "#f4f4f6";
+      tooltipEl.style.padding = "8px 10px";
+      tooltipEl.style.fontFamily = "'JetBrains Mono', monospace";
+      tooltipEl.style.fontVariantNumeric = "tabular-nums";
+      tooltipEl.style.fontSize = "12px";
+      tooltipEl.style.whiteSpace = "nowrap";
       tooltipEl.style.zIndex = "100";
 
       const table = document.createElement("table");
@@ -248,32 +268,36 @@ const renderChart = (data) => {
     ? "rgba(255, 255, 255, 0.08)"
     : "rgba(0, 0, 0, 0.08)";
 
+  const datasets = [
+    {
+      label: data.driver1.full_name,
+      data: generateLapData(driver1Laps, maxLaps),
+      borderColor: driver1Color,
+      backgroundColor: driver1Color,
+      tension: 0.2,
+      fill: false,
+      pointRadius: 4,
+      pointHoverRadius: 7,
+    },
+  ];
+  if (hasDistinctDriver2) {
+    datasets.push({
+      label: data.driver2.full_name,
+      data: generateLapData(driver2Laps, maxLaps),
+      borderColor: driver2Color,
+      backgroundColor: driver2Color,
+      tension: 0.2,
+      fill: false,
+      pointRadius: 4,
+      pointHoverRadius: 7,
+    });
+  }
+
   chartInstance = new Chart(ctx, {
     type: "line",
     data: {
       labels: labels,
-      datasets: [
-        {
-          label: data.driver1.full_name,
-          data: generateLapData(driver1Laps, maxLaps),
-          borderColor: driver1Color,
-          backgroundColor: driver1Color,
-          tension: 0.2,
-          fill: false,
-          pointRadius: 4,
-          pointHoverRadius: 7,
-        },
-        {
-          label: data.driver2.full_name,
-          data: generateLapData(driver2Laps, maxLaps),
-          borderColor: driver2Color,
-          backgroundColor: driver2Color,
-          tension: 0.2,
-          fill: false,
-          pointRadius: 4,
-          pointHoverRadius: 7,
-        },
-      ],
+      datasets: datasets,
     },
     plugins: [pitStopLinePlugin],
     options: {
@@ -295,7 +319,8 @@ const renderChart = (data) => {
           max: yMax, // Set Y-axis max (clipping pit stops)
           ticks: {
             color: tickColor,
-            maxTicksLimit: 15, // Increase number of ticks for the taller 600px height
+            maxTicksLimit: 15, // Increase number of ticks for the taller height
+            font: { family: "'JetBrains Mono', monospace", size: 11 },
             callback: (value) => formatLapTime(value),
           },
           grid: { color: gridColor },
@@ -303,7 +328,29 @@ const renderChart = (data) => {
       },
       plugins: {
         legend: {
-          labels: { color: titleColor },
+          labels: {
+            color: titleColor,
+            usePointStyle: true,
+            pointStyle: "circle",
+            padding: 16,
+            font: { weight: "600", size: 12 },
+          },
+          onClick: (e, legendItem, legend) => {
+            if (datasets.length <= 1) return;
+            const index = legendItem.datasetIndex;
+            const ci = legend.chart;
+            const isCurrentlyVisible = ci.isDatasetVisible(index);
+            const visibleCount = datasets.filter((_, i) =>
+              ci.isDatasetVisible(i),
+            ).length;
+            if (isCurrentlyVisible && visibleCount <= 1) return;
+
+            if (isCurrentlyVisible) {
+              ci.hide(index);
+            } else {
+              ci.show(index);
+            }
+          },
         },
         tooltip: {
           enabled: false,
@@ -347,9 +394,17 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <p v-if="isLoading" class="loading-text">Loading comparison data...</p>
-    <p v-if="error" class="error-text">{{ error }}</p>
-    <div v-if="raceComparison" class="chart-container">
-      <canvas id="lap-time-chart-canvas"></canvas>
+    <p v-if="error" class="error-text" role="alert">{{ error }}</p>
+    <div v-if="raceComparison" class="chart-card">
+      <div class="chart-header">
+        <span class="chart-title">Lap Time Progression</span>
+        <span class="chart-hint"
+          >Dashed vertical lines indicate pit-in laps</span
+        >
+      </div>
+      <div class="chart-container">
+        <canvas id="lap-time-chart-canvas"></canvas>
+      </div>
     </div>
   </div>
 </template>
@@ -358,16 +413,54 @@ onBeforeUnmount(() => {
 .loading-text,
 .error-text {
   text-align: center;
-  padding: 1rem;
+  padding: 2rem 1.5rem;
   color: var(--muted-text-color);
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-top: 1.5rem;
 }
 .error-text {
   color: var(--primary-color);
-  font-weight: bold;
+  background: var(--accent-color);
+  border-color: rgba(225, 6, 0, 0.25);
+  font-weight: 600;
+}
+.chart-card {
+  margin-top: 1.5rem;
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+.chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.chart-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+.chart-hint {
+  font-size: 0.78rem;
+  color: var(--muted-text-color);
 }
 .chart-container {
-  margin-top: 2rem;
-  height: 600px;
+  height: 540px;
   position: relative;
+}
+
+@media (max-width: 768px) {
+  .chart-card {
+    padding: 1rem;
+  }
+  .chart-container {
+    height: 380px;
+  }
 }
 </style>

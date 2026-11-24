@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, shallowRef, computed } from "vue";
+import { ref, watch, onMounted, shallowRef, computed, nextTick } from "vue";
 import { useRoute, RouterLink } from "vue-router";
 import F1Controls from "../components/F1Controls.vue";
 import F1Icon from "../components/F1Icon.vue";
@@ -104,18 +104,33 @@ const resetState = (level) => {
   }
 };
 
-const handleQuickLapSelect = async ({ driverNumber, lapNumber }) => {
-  // Switch to comparison mode to show telemetry
+const handleDriver1Change = (val) => {
+  selectedDriver1.value = val;
+  selectedLap1.value = null;
+};
+
+const handleDriver2Change = (val) => {
+  selectedDriver2.value = val;
+  selectedLap2.value = null;
+};
+
+const handleQuickLapSelect = ({ driverNumber, lapNumber }) => {
+  const dNum = String(driverNumber);
+  const lNum = Number(lapNumber);
+  const driverChanged =
+    String(selectedDriver1.value) !== dNum || Boolean(selectedDriver2.value);
+  const lapChanged = Number(selectedLap1.value) !== lNum;
+
+  selectedDriver1.value = dNum;
+  selectedLap1.value = lNum;
+  selectedDriver2.value = "";
+  selectedLap2.value = null;
   viewMode.value = "comparison";
 
-  // Set the first driver as the selected one from summary
-  selectedDriver1.value = driverNumber;
-  selectedLap1.value = lapNumber;
-
-  // If driver 2 isn't set, set it to the same or leave it
-  if (!selectedDriver2.value) {
-    selectedDriver2.value = driverNumber;
-    selectedLap2.value = lapNumber;
+  if (!driverChanged && !raceComparison.value) {
+    fetchRaceComparison();
+  } else if (!driverChanged && !lapChanged && !telemetryData.value) {
+    fetchTelemetry();
   }
 };
 
@@ -348,7 +363,7 @@ const fetchDrivers = async () => {
     if (
       viewMode.value === "comparison" &&
       drivers.value.length >= 2 &&
-      (!selectedDriver1.value || !selectedDriver2.value)
+      !selectedDriver1.value
     ) {
       applyAutoComparePreset("p1_vs_p2");
     }
@@ -363,6 +378,8 @@ const fetchDrivers = async () => {
 const applyAutoComparePreset = (mode = "p1_vs_p2") => {
   if (!drivers.value || drivers.value.length < 2) return;
 
+  const prevD1 = selectedDriver1.value;
+  const prevD2 = selectedDriver2.value;
   const p1 = drivers.value[0]?.driver_number;
   const p2 = drivers.value[1]?.driver_number;
 
@@ -388,13 +405,25 @@ const applyAutoComparePreset = (mode = "p1_vs_p2") => {
       selectedDriver2.value = String(d1Num) === String(p1) ? p2 : p1;
     }
   } else if (mode === "anchor_p1") {
-    selectedDriver1.value = p1;
-    if (
-      !selectedDriver2.value ||
-      String(selectedDriver2.value) === String(p1)
-    ) {
-      selectedDriver2.value = p2;
+    if (!selectedDriver2.value && selectedDriver1.value) {
+      selectedDriver2.value =
+        String(selectedDriver1.value) === String(p1) ? p2 : p1;
+    } else {
+      selectedDriver1.value = p1;
+      if (
+        !selectedDriver2.value ||
+        String(selectedDriver2.value) === String(p1)
+      ) {
+        selectedDriver2.value = p2;
+      }
     }
+  }
+
+  if (String(selectedDriver1.value) !== String(prevD1)) {
+    selectedLap1.value = null;
+  }
+  if (String(selectedDriver2.value) !== String(prevD2)) {
+    selectedLap2.value = null;
   }
 };
 
@@ -417,11 +446,15 @@ const fetchSessionDataSequentially = async () => {
   }
 };
 
+let comparisonReqId = 0;
+let telemetryReqId = 0;
+
 const fetchRaceComparison = async () => {
-  if (!selectedDriver1.value || !selectedDriver2.value) {
+  if (!selectedDriver1.value) {
     resetState(3);
     return;
   }
+  const reqId = ++comparisonReqId;
   isLoadingComparison.value = true;
   comparisonError.value = null;
   telemetryData.value = null;
@@ -434,63 +467,74 @@ const fetchRaceComparison = async () => {
       selectedDriver1.value,
       selectedDriver2.value,
     );
+    if (reqId !== comparisonReqId) return;
     raceComparison.value = data;
 
-    // Find fastest laps to set defaults
-    if (data && data.driver1 && data.driver1.laps) {
-      const validLaps1 = data.driver1.laps.filter(
-        (l) => l.lap_time_seconds !== null,
-      );
+    // Resolve Lap 1 (keep existing valid selection or fall back to fastest/first)
+    const allLaps1 = data?.driver1?.laps || [];
+    const hasExistingLap1 =
+      selectedLap1.value != null &&
+      allLaps1.some((l) => Number(l.lap_number) === Number(selectedLap1.value));
+    if (!hasExistingLap1) {
+      const validLaps1 = allLaps1.filter((l) => l.lap_time_seconds !== null);
       if (validLaps1.length > 0) {
         const fastest1 = validLaps1.reduce((prev, curr) =>
           prev.lap_time_seconds < curr.lap_time_seconds ? prev : curr,
         );
-        const hasExistingLap1 =
-          selectedLap1.value != null &&
-          validLaps1.some(
-            (l) => Number(l.lap_number) === Number(selectedLap1.value),
-          );
-        if (!hasExistingLap1) {
-          selectedLap1.value = fastest1.lap_number;
-        }
+        selectedLap1.value = fastest1.lap_number;
+      } else {
+        selectedLap1.value = allLaps1[0]?.lap_number ?? null;
       }
     }
-    if (data && data.driver2 && data.driver2.laps) {
-      const validLaps2 = data.driver2.laps.filter(
-        (l) => l.lap_time_seconds !== null,
-      );
-      if (validLaps2.length > 0) {
-        const fastest2 = validLaps2.reduce((prev, curr) =>
-          prev.lap_time_seconds < curr.lap_time_seconds ? prev : curr,
+
+    // Resolve Lap 2 (clear in single-driver mode, otherwise pick distinct lap when same driver)
+    if (!selectedDriver2.value || !data?.driver2?.laps?.length) {
+      selectedLap2.value = null;
+    } else {
+      const allLaps2 = data.driver2.laps;
+      const hasExistingLap2 =
+        selectedLap2.value != null &&
+        allLaps2.some(
+          (l) => Number(l.lap_number) === Number(selectedLap2.value),
         );
-        const hasExistingLap2 =
-          selectedLap2.value != null &&
-          validLaps2.some(
-            (l) => Number(l.lap_number) === Number(selectedLap2.value),
-          );
-        if (!hasExistingLap2) {
-          selectedLap2.value = fastest2.lap_number;
+      if (!hasExistingLap2) {
+        const sortedValid2 = allLaps2
+          .filter((l) => l.lap_time_seconds !== null)
+          .sort((a, b) => a.lap_time_seconds - b.lap_time_seconds);
+        if (
+          String(selectedDriver1.value) === String(selectedDriver2.value) &&
+          sortedValid2.length > 1 &&
+          Number(sortedValid2[0].lap_number) === Number(selectedLap1.value)
+        ) {
+          selectedLap2.value = sortedValid2[1].lap_number;
+        } else {
+          selectedLap2.value =
+            sortedValid2[0]?.lap_number ?? allLaps2[0]?.lap_number ?? null;
         }
       }
     }
+
+    await nextTick();
+    if (reqId !== comparisonReqId) return;
+    isLoadingComparison.value = false;
+    await fetchTelemetry();
   } catch (e) {
+    if (reqId !== comparisonReqId) return;
     console.error("Failed to fetch race comparison:", e);
     comparisonError.value = "Could not load race comparison data.";
   } finally {
-    isLoadingComparison.value = false;
+    if (reqId === comparisonReqId) {
+      isLoadingComparison.value = false;
+    }
   }
 };
 
 const fetchTelemetry = async () => {
-  if (
-    !selectedDriver1.value ||
-    !selectedDriver2.value ||
-    !selectedLap1.value ||
-    !selectedLap2.value
-  ) {
-    return;
-  }
+  if (isLoadingComparison.value) return;
+  if (!selectedDriver1.value || !selectedLap1.value) return;
+  if (selectedDriver2.value && !selectedLap2.value) return;
 
+  const reqId = ++telemetryReqId;
   isLoadingTelemetry.value = true;
   telemetryError.value = null;
 
@@ -500,16 +544,20 @@ const fetchTelemetry = async () => {
       selectedEventKey.value,
       selectedSessionName.value,
       selectedDriver1.value,
-      selectedDriver2.value,
+      selectedDriver2.value || "",
       selectedLap1.value,
-      selectedLap2.value,
+      selectedDriver2.value ? selectedLap2.value : null,
     );
+    if (reqId !== telemetryReqId) return;
     telemetryData.value = data;
   } catch (e) {
+    if (reqId !== telemetryReqId) return;
     console.error("Failed to fetch telemetry:", e);
     telemetryError.value = "Could not load telemetry data.";
   } finally {
-    isLoadingTelemetry.value = false;
+    if (reqId === telemetryReqId) {
+      isLoadingTelemetry.value = false;
+    }
   }
 };
 
@@ -582,10 +630,7 @@ watch(viewMode, (newMode) => {
       fetchRaceSummary();
     }
   } else if (newMode === "comparison") {
-    if (
-      drivers.value.length >= 2 &&
-      (!selectedDriver1.value || !selectedDriver2.value)
-    ) {
+    if (drivers.value.length >= 2 && !selectedDriver1.value) {
       applyAutoComparePreset("p1_vs_p2");
     }
   }
@@ -626,8 +671,10 @@ onMounted(() => {
       :isLoadingSessions="isLoadingSessions"
       :sessionsError="sessionsError"
       :drivers="drivers"
-      v-model:selectedDriver1="selectedDriver1"
-      v-model:selectedDriver2="selectedDriver2"
+      :selectedDriver1="selectedDriver1"
+      @update:selectedDriver1="handleDriver1Change"
+      :selectedDriver2="selectedDriver2"
+      @update:selectedDriver2="handleDriver2Change"
       :isLoadingDrivers="isLoadingDrivers"
       :driversError="driversError"
       :lapsDriver1="raceComparison?.driver1?.laps || []"
@@ -680,10 +727,14 @@ onMounted(() => {
 
     <template v-else-if="viewMode === 'summary'">
       <div v-if="isLoadingSummary" class="loading-state">
+        <div class="spinner" aria-hidden="true"></div>
         <p>Loading session performance data...</p>
       </div>
-      <div v-else-if="summaryError" class="error-state">
+      <div v-else-if="summaryError" class="error-state" role="alert">
         <p>{{ summaryError }}</p>
+        <button type="button" class="retry-btn" @click="fetchRaceSummary">
+          Retry
+        </button>
       </div>
       <QualifyingSummary
         v-else-if="isQualifyingSession && summaryData"
@@ -700,6 +751,7 @@ onMounted(() => {
         :isLoading="isLoadingSummary"
         :error="summaryError"
         :year="Number(year)"
+        :sessionName="selectedSessionName"
       />
     </template>
   </div>
@@ -713,13 +765,66 @@ onMounted(() => {
 .loading-state,
 .error-state {
   text-align: center;
-  padding: 3rem 1.5rem;
+  padding: 3.5rem 1.5rem;
   color: var(--muted-text-color);
   font-size: 0.95rem;
+  background: var(--card-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-top: 1.5rem;
+}
+
+.loading-state p,
+.error-state p {
+  margin: 0;
+}
+
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error-state {
   color: var(--primary-color);
+  background: var(--accent-color);
+  border-color: rgba(225, 6, 0, 0.25);
+  font-weight: 600;
+}
+
+.retry-btn {
+  margin-top: 1rem;
+  padding: 0.5rem 1.15rem;
+  border-radius: 6px;
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.retry-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .empty-event-card {
@@ -735,6 +840,7 @@ onMounted(() => {
 .empty-icon {
   font-size: 2.75rem;
   margin-bottom: 1rem;
+  color: var(--primary-color);
 }
 
 .empty-event-card h3 {
@@ -743,8 +849,7 @@ onMounted(() => {
   margin-top: 0;
   margin-bottom: 0.75rem;
   color: var(--text-color);
-  border-left: none;
-  padding-left: 0;
+  text-wrap: balance;
 }
 
 .empty-desc {
@@ -772,7 +877,9 @@ onMounted(() => {
   border-radius: 6px;
   background: var(--card-bg-color);
   border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .secondary-link:hover {
@@ -780,14 +887,19 @@ onMounted(() => {
   background: var(--accent-color);
 }
 
+.secondary-link:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .section-title {
   font-size: 1.25rem;
   font-weight: 700;
   margin-top: 2.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.6rem;
   color: var(--text-color);
-  border-left: 4px solid var(--primary-color);
-  padding-left: 1rem;
-  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
 @media (max-width: 768px) {

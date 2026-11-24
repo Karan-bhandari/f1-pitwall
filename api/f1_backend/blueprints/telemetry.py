@@ -131,11 +131,13 @@ def get_race_comparison():
     event_key = request.args.get("event_key", type=str)
     session_name = request.args.get("session_name", type=str)
     driver1_number = request.args.get("driver1_number", type=str)
-    driver2_number = request.args.get("driver2_number", type=str)
+    driver2_number = (
+        request.args.get("driver2_number", type=str) or ""
+    ).strip() or None
 
-    if not all([year, event_key, session_name, driver1_number, driver2_number]):
+    if not all([year, event_key, session_name, driver1_number]):
         return error_response(
-            "All parameters (year, event_key, session_name, driver1_number, driver2_number) are required."
+            "Parameters year, event_key, session_name, and driver1_number are required."
         )
 
     try:
@@ -152,9 +154,6 @@ def get_race_comparison():
         driver1_laps = (
             laps.pick_drivers(driver1_number) if laps is not None else pd.DataFrame()
         )
-        driver2_laps = (
-            laps.pick_drivers(driver2_number) if laps is not None else pd.DataFrame()
-        )
 
         def format_lap_data(laps, driver_number):
             lap_data = []
@@ -163,7 +162,23 @@ def get_race_comparison():
             return lap_data
 
         driver1_info = session.get_driver(driver1_number)
-        driver2_info = session.get_driver(driver2_number)
+
+        driver2_payload = None
+        if driver2_number:
+            driver2_laps = (
+                laps.pick_drivers(driver2_number)
+                if laps is not None
+                else pd.DataFrame()
+            )
+            driver2_info = session.get_driver(driver2_number)
+            driver2_payload = {
+                "driver_number": driver2_number,
+                "abbreviation": str(driver2_info["Abbreviation"]),
+                "full_name": str(driver2_info["FullName"]),
+                "team": str(driver2_info["TeamName"]),
+                "team_color": resolve_team_color(driver2_info),
+                "laps": format_lap_data(driver2_laps, driver2_number),
+            }
 
         comparison_data = {
             "has_telemetry": year >= 2018,
@@ -175,14 +190,7 @@ def get_race_comparison():
                 "team_color": resolve_team_color(driver1_info),
                 "laps": format_lap_data(driver1_laps, driver1_number),
             },
-            "driver2": {
-                "driver_number": driver2_number,
-                "abbreviation": str(driver2_info["Abbreviation"]),
-                "full_name": str(driver2_info["FullName"]),
-                "team": str(driver2_info["TeamName"]),
-                "team_color": resolve_team_color(driver2_info),
-                "laps": format_lap_data(driver2_laps, driver2_number),
-            },
+            "driver2": driver2_payload,
         }
 
         return jsonify(comparison_data), 200
@@ -256,22 +264,21 @@ def get_lap_telemetry():
     event_key = request.args.get("event_key", type=str)
     session_name = request.args.get("session_name", type=str)
     driver1_number = request.args.get("driver1_number", type=str)
-    driver2_number = request.args.get("driver2_number", type=str)
+    driver2_number = (
+        request.args.get("driver2_number", type=str) or ""
+    ).strip() or None
     lap1_number = request.args.get("lap1_number", type=int)
     lap2_number = request.args.get("lap2_number", type=int)
 
-    if not all(
-        [
-            year,
-            event_key,
-            session_name,
-            driver1_number,
-            driver2_number,
-            lap1_number,
-            lap2_number,
-        ]
-    ):
-        return error_response("All parameters are required.")
+    if not all([year, event_key, session_name, driver1_number]) or lap1_number is None:
+        return error_response(
+            "Parameters year, event_key, session_name, driver1_number, and lap1_number are required."
+        )
+
+    if bool(driver2_number) != (lap2_number is not None):
+        return error_response(
+            "Both driver2_number and lap2_number must be provided together."
+        )
 
     try:
         # Check for telemetry support based on year
@@ -289,20 +296,24 @@ def get_lap_telemetry():
             return error_response("No lap data available for this session.", 404)
 
         driver1_lap = laps.pick_drivers(driver1_number).pick_laps(lap1_number)
-        driver2_lap = laps.pick_drivers(driver2_number).pick_laps(lap2_number)
 
-        # Check if laps exist
+        # Check if lap exists
         if driver1_lap.empty:
             return error_response(
                 f"No data for Driver {driver1_number} Lap {lap1_number}.", 404
             )
-        if driver2_lap.empty:
-            return error_response(
-                f"No data for Driver {driver2_number} Lap {lap2_number}.", 404
-            )
 
         driver1_telemetry = driver1_lap.get_telemetry()
-        driver2_telemetry = driver2_lap.get_telemetry()
+
+        driver2_lap = None
+        driver2_telemetry = None
+        if driver2_number:
+            driver2_lap = laps.pick_drivers(driver2_number).pick_laps(lap2_number)
+            if driver2_lap.empty:
+                return error_response(
+                    f"No data for Driver {driver2_number} Lap {lap2_number}.", 404
+                )
+            driver2_telemetry = driver2_lap.get_telemetry()
 
         # Get circuit info for turns
         circuit_info = session.get_circuit_info()
@@ -357,59 +368,43 @@ def get_lap_telemetry():
                 )
             return telemetry_data
 
-        driver1_info = session.get_driver(driver1_number)
-        driver2_info = session.get_driver(driver2_number)
+        def format_driver_telemetry(driver_number, lap_df, lap_number, telemetry):
+            driver_info = session.get_driver(driver_number)
+            return {
+                "driver_number": driver_number,
+                "abbreviation": str(driver_info["Abbreviation"]),
+                "full_name": str(driver_info["FullName"]),
+                "team": str(driver_info["TeamName"]),
+                "team_color": resolve_team_color(driver_info),
+                "lap_number": lap_number,
+                "lap_time": (
+                    format_timedelta(lap_df["LapTime"].iloc[0])
+                    if not lap_df["LapTime"].empty
+                    and pd.notna(lap_df["LapTime"].iloc[0])
+                    else None
+                ),
+                "lap_time_seconds": (
+                    float(lap_df["LapTime"].iloc[0].total_seconds())
+                    if not lap_df["LapTime"].empty
+                    and pd.notna(lap_df["LapTime"].iloc[0])
+                    and hasattr(lap_df["LapTime"].iloc[0], "total_seconds")
+                    else None
+                ),
+                "telemetry": format_telemetry(telemetry, driver_number, lap_number),
+            }
 
         telemetry_comparison = {
             "circuit_info": {"turns": turns},
-            "driver1": {
-                "driver_number": driver1_number,
-                "abbreviation": str(driver1_info["Abbreviation"]),
-                "full_name": str(driver1_info["FullName"]),
-                "team": str(driver1_info["TeamName"]),
-                "team_color": resolve_team_color(driver1_info),
-                "lap_number": lap1_number,
-                "lap_time": (
-                    format_timedelta(driver1_lap["LapTime"].iloc[0])
-                    if not driver1_lap["LapTime"].empty
-                    and pd.notna(driver1_lap["LapTime"].iloc[0])
-                    else None
-                ),
-                "lap_time_seconds": (
-                    float(driver1_lap["LapTime"].iloc[0].total_seconds())
-                    if not driver1_lap["LapTime"].empty
-                    and pd.notna(driver1_lap["LapTime"].iloc[0])
-                    and hasattr(driver1_lap["LapTime"].iloc[0], "total_seconds")
-                    else None
-                ),
-                "telemetry": format_telemetry(
-                    driver1_telemetry, driver1_number, lap1_number
-                ),
-            },
-            "driver2": {
-                "driver_number": driver2_number,
-                "abbreviation": str(driver2_info["Abbreviation"]),
-                "full_name": str(driver2_info["FullName"]),
-                "team": str(driver2_info["TeamName"]),
-                "team_color": resolve_team_color(driver2_info),
-                "lap_number": lap2_number,
-                "lap_time": (
-                    format_timedelta(driver2_lap["LapTime"].iloc[0])
-                    if not driver2_lap["LapTime"].empty
-                    and pd.notna(driver2_lap["LapTime"].iloc[0])
-                    else None
-                ),
-                "lap_time_seconds": (
-                    float(driver2_lap["LapTime"].iloc[0].total_seconds())
-                    if not driver2_lap["LapTime"].empty
-                    and pd.notna(driver2_lap["LapTime"].iloc[0])
-                    and hasattr(driver2_lap["LapTime"].iloc[0], "total_seconds")
-                    else None
-                ),
-                "telemetry": format_telemetry(
-                    driver2_telemetry, driver2_number, lap2_number
-                ),
-            },
+            "driver1": format_driver_telemetry(
+                driver1_number, driver1_lap, lap1_number, driver1_telemetry
+            ),
+            "driver2": (
+                format_driver_telemetry(
+                    driver2_number, driver2_lap, lap2_number, driver2_telemetry
+                )
+                if driver2_number
+                else None
+            ),
         }
 
         return jsonify(telemetry_comparison), 200

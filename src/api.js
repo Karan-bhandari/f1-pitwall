@@ -64,8 +64,13 @@ export function getEffectiveCacheHours(
     }
   }
 
-  if (data.driver1 && data.driver2 && Array.isArray(data.driver1.laps)) {
-    if (data.driver1.laps.length === 0 || data.driver2.laps.length === 0) {
+  if (data.driver1 && Array.isArray(data.driver1.laps)) {
+    if (
+      data.driver1.laps.length === 0 ||
+      (data.driver2 &&
+        Array.isArray(data.driver2.laps) &&
+        data.driver2.laps.length === 0)
+    ) {
       return LIVE_WEEKEND_CACHE_HOURS;
     }
   }
@@ -194,17 +199,20 @@ export async function getDrivers(year, eventKey, sessionName) {
 }
 
 /**
- * Gets the lap-by-lap comparison for two drivers.
+ * Gets the lap-by-lap comparison for one or two drivers.
  */
 export async function getRaceComparison(
   year,
   eventKey,
   sessionName,
   driver1,
-  driver2,
+  driver2 = "",
 ) {
-  if (!year || !eventKey || !sessionName || !driver1 || !driver2) return null;
-  const url = `${API_BASE_URL}/race-comparison?year=${year}&event_key=${eventKey}&session_name=${sessionName}&driver1_number=${driver1}&driver2_number=${driver2}`;
+  if (!year || !eventKey || !sessionName || !driver1) return null;
+  let url = `${API_BASE_URL}/race-comparison?year=${year}&event_key=${eventKey}&session_name=${sessionName}&driver1_number=${driver1}`;
+  if (driver2) {
+    url += `&driver2_number=${driver2}`;
+  }
   return await fetchAndCache(
     url,
     getCacheHoursForYear(year),
@@ -213,7 +221,7 @@ export async function getRaceComparison(
 }
 
 /**
- * Gets the telemetry for specific laps for two drivers.
+ * Gets the telemetry for specific laps for one or two drivers.
  */
 export async function getLapTelemetry(
   year,
@@ -224,17 +232,12 @@ export async function getLapTelemetry(
   lap1,
   lap2,
 ) {
-  if (
-    !year ||
-    !eventKey ||
-    !sessionName ||
-    !driver1 ||
-    !driver2 ||
-    !lap1 ||
-    !lap2
-  )
-    return null;
-  const url = `${API_BASE_URL}/lap-telemetry?year=${year}&event_key=${eventKey}&session_name=${sessionName}&driver1_number=${driver1}&driver2_number=${driver2}&lap1_number=${lap1}&lap2_number=${lap2}`;
+  if (!year || !eventKey || !sessionName || !driver1 || !lap1) return null;
+  if (driver2 && !lap2) return null;
+  const url =
+    driver2 && lap2
+      ? `${API_BASE_URL}/lap-telemetry?year=${year}&event_key=${eventKey}&session_name=${sessionName}&driver1_number=${driver1}&driver2_number=${driver2}&lap1_number=${lap1}&lap2_number=${lap2}`
+      : `${API_BASE_URL}/lap-telemetry?year=${year}&event_key=${eventKey}&session_name=${sessionName}&driver1_number=${driver1}&lap1_number=${lap1}`;
   return await fetchAndCache(
     url,
     getCacheHoursForYear(year),

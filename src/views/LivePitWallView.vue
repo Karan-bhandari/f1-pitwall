@@ -242,6 +242,7 @@ onUnmounted(() => {
             type="button"
             class="tz-btn"
             :class="{ active: effectiveTimeMode === 'local' }"
+            :aria-pressed="effectiveTimeMode === 'local'"
             @click="setTimeZoneMode('local')"
             :title="`Show timestamps in your timezone (${localTzLabel})`"
           >
@@ -251,6 +252,7 @@ onUnmounted(() => {
             type="button"
             class="tz-btn"
             :class="{ active: effectiveTimeMode === 'track' }"
+            :aria-pressed="effectiveTimeMode === 'track'"
             @click="setTimeZoneMode('track')"
             :title="`Show timestamps in ${trackPlaceLabel} local time (${trackTzLabel})`"
           >
@@ -285,6 +287,7 @@ onUnmounted(() => {
             <button
               type="button"
               class="ctrl-btn"
+              :aria-pressed="isPaused"
               @click="togglePause"
               :title="isPaused ? 'Resume auto-refresh' : 'Pause auto-refresh'"
             >
@@ -336,7 +339,7 @@ onUnmounted(() => {
     </section>
 
     <!-- Error Banner (non-blocking if stale snapshot exists) -->
-    <div v-if="errorMsg" class="error-banner" role="alert">
+    <div v-if="errorMsg && snapshot" class="error-banner" role="alert">
       <span>{{ errorMsg }}</span>
       <button
         type="button"
@@ -348,8 +351,25 @@ onUnmounted(() => {
     </div>
 
     <!-- Loading Skeleton -->
-    <div v-if="isLoading && !snapshot" class="loading-box">
-      <p>Connecting to Formula 1 Live Timing...</p>
+    <div v-if="isLoading && !snapshot" class="loading-box" role="status">
+      <span class="loading-spinner" aria-hidden="true"></span>
+      <p class="state-title">Connecting to Formula 1 Live Timing</p>
+      <p class="state-subtitle">
+        Fetching classification, track status, and race control feed...
+      </p>
+    </div>
+
+    <!-- Blocking Error State (initial load failed) -->
+    <div v-else-if="errorMsg && !snapshot" class="error-state" role="alert">
+      <p class="state-title">Unable to reach Live Timing</p>
+      <p class="state-subtitle">{{ errorMsg }}</p>
+      <button
+        type="button"
+        class="ctrl-btn ctrl-btn-primary"
+        @click="loadSnapshot({ background: false })"
+      >
+        Retry Connection
+      </button>
     </div>
 
     <!-- Main Pit Wall Grid + Collapsible Classification Key -->
@@ -496,19 +516,27 @@ onUnmounted(() => {
   padding: 1.1rem 1.25rem;
   border-radius: 10px;
   border: 1px solid var(--border-color);
-  border-left-width: 5px;
   background: var(--item-bg-color);
   flex-wrap: nowrap;
 }
 
 .live-hero.flag-green {
-  border-left-color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.35);
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.06), transparent 55%),
+    var(--item-bg-color);
 }
 .live-hero.flag-yellow {
-  border-left-color: #eab308;
+  border-color: rgba(234, 179, 8, 0.45);
+  background:
+    linear-gradient(135deg, rgba(234, 179, 8, 0.09), transparent 55%),
+    var(--item-bg-color);
 }
 .live-hero.flag-red {
-  border-left-color: var(--primary-color);
+  border-color: rgba(225, 6, 0, 0.45);
+  background:
+    linear-gradient(135deg, rgba(225, 6, 0, 0.09), transparent 55%),
+    var(--item-bg-color);
 }
 
 .hero-main {
@@ -586,15 +614,15 @@ onUnmounted(() => {
 }
 .track-pill.flag-green {
   background: rgba(34, 197, 94, 0.16);
-  color: #16a34a;
+  color: #15803d;
 }
 .track-pill.flag-yellow {
   background: rgba(234, 179, 8, 0.22);
-  color: #a16207;
+  color: #854d0e;
 }
 .track-pill.flag-red {
-  background: rgba(225, 6, 0, 0.18);
-  color: var(--primary-color);
+  background: rgba(225, 6, 0, 0.16);
+  color: #b91c1c;
 }
 
 html[data-theme="dark"] .track-pill.flag-green {
@@ -602,6 +630,9 @@ html[data-theme="dark"] .track-pill.flag-green {
 }
 html[data-theme="dark"] .track-pill.flag-yellow {
   color: #facc15;
+}
+html[data-theme="dark"] .track-pill.flag-red {
+  color: #fca5a5;
 }
 
 .event-title {
@@ -685,6 +716,12 @@ html[data-theme="dark"] .track-pill.flag-yellow {
   border-color: var(--primary-color);
 }
 
+.ctrl-btn:focus-visible,
+.tz-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .ctrl-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -725,7 +762,11 @@ html[data-theme="dark"] .track-pill.flag-yellow {
 
 .tz-btn.active {
   background: var(--accent-color);
-  color: var(--primary-color);
+  color: #b91c1c;
+}
+
+html[data-theme="dark"] .tz-btn.active {
+  color: #ff6b5b;
 }
 
 .weather-strip {
@@ -758,8 +799,11 @@ html[data-theme="dark"] .track-pill.flag-yellow {
 }
 
 .cond-wet {
-  color: #38bdf8;
+  color: #0369a1;
   font-weight: 800;
+}
+html[data-theme="dark"] .cond-wet {
+  color: #38bdf8;
 }
 .cond-dry {
   color: var(--text-color);
@@ -778,12 +822,54 @@ html[data-theme="dark"] .track-pill.flag-yellow {
   font-size: 0.88rem;
 }
 
-.loading-box {
-  padding: 3rem 1rem;
+.loading-box,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 3rem 1.25rem;
   text-align: center;
   border: 1px dashed var(--border-color);
   border-radius: 10px;
+  background: var(--card-bg-color);
   color: var(--muted-text-color);
+}
+
+.error-state {
+  border-style: solid;
+  border-color: rgba(225, 6, 0, 0.35);
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: pitwall-spin 0.8s linear infinite;
+  margin-bottom: 0.25rem;
+}
+
+@keyframes pitwall-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.state-title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.state-subtitle {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.84rem;
+  color: var(--muted-text-color);
+  max-width: 44ch;
 }
 
 .pitwall-grid {
@@ -818,6 +904,11 @@ html[data-theme="dark"] .track-pill.flag-yellow {
   cursor: pointer;
   list-style: none;
   flex-wrap: wrap;
+}
+
+.key-summary:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
 }
 
 .key-summary::-webkit-details-marker {
@@ -915,20 +1006,20 @@ html[data-theme="dark"] .track-pill.flag-yellow {
 }
 
 .token-purple {
-  background: rgba(168, 85, 247, 0.18);
-  color: #a855f7;
+  background: rgba(168, 85, 247, 0.16);
+  color: #7e22ce;
 }
 .token-green {
   background: rgba(34, 197, 94, 0.16);
-  color: #16a34a;
+  color: #15803d;
 }
 .token-blue {
   background: rgba(56, 189, 248, 0.18);
-  color: #0284c7;
+  color: #0369a1;
 }
 .token-red {
   background: rgba(225, 6, 0, 0.16);
-  color: var(--primary-color);
+  color: #b91c1c;
 }
 .token-muted {
   background: rgba(148, 163, 184, 0.22);
@@ -940,11 +1031,17 @@ html[data-theme="dark"] .track-pill.flag-yellow {
   color: var(--text-color);
 }
 
+html[data-theme="dark"] .token-purple {
+  color: #c084fc;
+}
 html[data-theme="dark"] .token-green {
   color: #4ade80;
 }
 html[data-theme="dark"] .token-blue {
   color: #38bdf8;
+}
+html[data-theme="dark"] .token-red {
+  color: #fca5a5;
 }
 
 @media (max-width: 900px) {
