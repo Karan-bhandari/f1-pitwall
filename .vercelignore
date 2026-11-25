@@ -1,11 +1,25 @@
-# Ignore everything at root (frontend, Cloudflare Worker, Node/Vite, tests, docs)
-/*
+# Frontend, Cloudflare Worker & Node/Vite files (handled by Cloudflare Workers Builds)
+src/
+worker/
+public/
+node_modules/
+dist/
+.cloudflare/
+.wrangler/
+index.html
+package.json
+package-lock.json
+vite.config.js
+cloudflare.config.ts
+.nvmrc
 
-# Whitelist only Vercel routing config and Python API backend
-!vercel.json
-!api/
-
-# Exclude local-only scripts, caches, and bytecode inside api/
+# Local dev, tests, docs & caches
+tests/
+docs/
+README.md
+GEMINI.md
+.venv/
+.pytest_cache/
 api/instance/
 api/run.py
 api/warm_cache.py
