@@ -1,14 +1,17 @@
 import { fileURLToPath, URL } from "node:url";
 
 import { defineConfig } from "vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import vue from "@vitejs/plugin-vue";
 import vueDevTools from "vite-plugin-vue-devtools";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "/f1-pitwall/",
   plugins: [
     vue(),
     process.env.NODE_ENV !== "production" && vueDevTools(),
+    cloudflare(),
   ].filter(Boolean),
   resolve: {
     alias: {
@@ -20,8 +23,11 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:5005",
         changeOrigin: true,
-        // Removed the rewrite to ensure the /api prefix is passed to the backend,
-        // matching the production behavior on Vercel.
+      },
+      "/f1-pitwall/api": {
+        target: "http://127.0.0.1:5005",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/f1-pitwall/, ""),
       },
     },
   },

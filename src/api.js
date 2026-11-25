@@ -72,7 +72,9 @@ const ETERNAL_CACHE_HOURS = 99999;
 const RECENT_WINDOW_MS = 48 * 60 * 60 * 1000;
 const CACHE_VERSION = 15;
 
-const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || "/api";
+const API_BASE_URL =
+  import.meta.env?.VITE_API_BASE_URL ||
+  `${(import.meta.env?.BASE_URL || "/").replace(/\/$/, "")}/api`;
 const eventDatesCache = new Map();
 
 function isWithinRecentWindow(dateStr, nowMs = Date.now()) {

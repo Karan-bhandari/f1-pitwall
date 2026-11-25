@@ -1,7 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
-import { Analytics } from "@vercel/analytics/vue";
 import F1Icon from "@/components/F1Icon.vue";
 import SeasonPicker from "@/components/SeasonPicker.vue";
 import { getLiveStatus } from "./api.js";
@@ -92,8 +91,6 @@ onUnmounted(() => {
 
 <template>
   <div id="app-container">
-    <Analytics />
-
     <!-- App Shell Header Bar -->
     <header class="app-header">
       <div class="header-brand-nav">

@@ -1,6 +1,8 @@
-from flask import Flask, jsonify
+from datetime import datetime, timezone
+from flask import Flask, jsonify, redirect, request
 from flask_cors import CORS
 import fastf1
+import hmac
 import os
 import logging
 import sys
@@ -59,11 +61,16 @@ def create_app():
     CORS(app, resources={r"/*": {"origins": "*"}})
 
     try:
-        # Determine cache path
-        is_vercel = bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
-        if is_vercel:
+        # Determine cache path (ephemeral /tmp on Vercel Serverless & Cloud Run)
+        is_ephemeral = bool(
+            os.environ.get("VERCEL")
+            or os.environ.get("VERCEL_ENV")
+            or os.environ.get("K_SERVICE")
+            or os.environ.get("CONTAINER_ENV")
+        )
+        if is_ephemeral:
             cache_path = "/tmp/fastf1_cache"
-            # Vercel's home directory is read-only; store the cached F1 JWT in /tmp
+            # Read-only container/serverless home dir; store cached F1 JWT in /tmp
             if token_manager is not None:
                 token_manager._token_path = Path(cache_path) / "f1auth_token.json"
         else:
@@ -83,16 +90,61 @@ def create_app():
         logger.error(f"Failed to initialize FastF1 cache: {str(e)}")
         # We don't crash the app here, but routes might fail later
 
+    @app.before_request
+    def verify_origin_secret():
+        expected = os.environ.get("PITWALL_ORIGIN_SECRET", "").strip()
+        if not expected:
+            return None
+        provided = request.headers.get("X-Pitwall-Origin-Secret", "")
+        if not hmac.compare_digest(provided, expected):
+            public_base = os.environ.get(
+                "PUBLIC_APP_URL", "https://kbkaran.com/f1-pitwall"
+            ).rstrip("/")
+            if request.path.startswith("/api"):
+                qs = request.query_string.decode("utf-8", errors="ignore")
+                suffix = f"{request.path}?{qs}" if qs else request.path
+                return redirect(f"{public_base}{suffix}", code=307)
+            return redirect(f"{public_base}/", code=302)
+        return None
+
+    @app.after_request
+    def apply_edge_cache_headers(response):
+        if (
+            request.method == "GET"
+            and response.status_code == 200
+            and request.path.startswith("/api")
+        ):
+            if "Cache-Control" not in response.headers:
+                year = request.args.get("year", type=int)
+                current_year = datetime.now(timezone.utc).year
+                if year is not None and year < current_year:
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=3600, s-maxage=604800, stale-while-revalidate=86400"
+                    )
+                else:
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+                    )
+            cc = response.headers.get("Cache-Control", "")
+            if "s-maxage=" in cc and "CDN-Cache-Control" not in response.headers:
+                response.headers["CDN-Cache-Control"] = cc
+        return response
+
     # Health check route
     @app.route("/")
     @app.route("/api")
     def hello():
+        env_name = (
+            "vercel"
+            if (os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
+            else ("cloudrun" if os.environ.get("K_SERVICE") else "local")
+        )
         return (
             jsonify(
                 {
                     "message": "FastF1 Flask API is running successfully!",
                     "fastf1_version": fastf1.__version__,
-                    "environment": "vercel" if os.environ.get("VERCEL") else "local",
+                    "environment": env_name,
                 }
             ),
             200,

@@ -1,23 +1,31 @@
 {
-  "name": "frontend",
+  "name": "f1-pitwall",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26.0.0"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "cf build",
+    "preview": "vite preview",
+    "cf:dev": "cf dev",
+    "cf:deploy": "cf deploy --dry-run",
+    "deploy": "cf deploy",
+    "deploy:ci": "cf deploy --prebuilt"
   },
   "dependencies": {
-    "@vercel/analytics": "^2.0.1",
     "chart.js": "^4.6.1",
     "vue": "^3.5.13",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.3",
+    "@cloudflare/vite-plugin": "^2.0.0-rc.5",
+    "@vitejs/plugin-vue": "^6.0.11",
+    "cf": "^1.0.0-rc.6",
     "prettier": "^3.10.1",
-    "vite": "^6.2.4",
-    "vite-plugin-vue-devtools": "^7.7.2"
+    "vite": "^7.0.0",
+    "vite-plugin-vue-devtools": "^8.2.1"
   }
 }
