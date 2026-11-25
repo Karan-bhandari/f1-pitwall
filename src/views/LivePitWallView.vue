@@ -16,6 +16,8 @@ import LiveTimingTower from "../components/LiveTimingTower.vue";
 import RaceControlFeed from "../components/RaceControlFeed.vue";
 import F1Icon from "../components/F1Icon.vue";
 
+defineProps({ year: Number, theme: String });
+
 const LIVE_POLL_MS = 5000;
 const IDLE_POLL_MS = 30000;
 
@@ -104,6 +106,79 @@ const formattedClockTime = computed(() => {
     effectiveTimeMode.value === "track" ? trackPlaceLabel.value : localTzLabel;
   return `${formatted} · ${zoneTag}`;
 });
+
+const weatherItems = computed(() => {
+  const w = weather.value;
+  if (!w) return [];
+  const u = unitSystem.value;
+  return [
+    { label: "AIR", value: formatTemperature(w.air_temp, u), valClass: "mono" },
+    {
+      label: "TRACK",
+      value: formatTemperature(w.track_temp, u),
+      valClass: "mono",
+    },
+    { label: "HUMIDITY", value: `${w.humidity ?? "—"}%`, valClass: "mono" },
+    {
+      label: "WIND",
+      value: formatWindSpeed(w.wind_speed, u),
+      valClass: "mono",
+    },
+    {
+      label: "CONDITIONS",
+      value: w.rainfall ? "WET / RAIN" : "DRY",
+      valClass: w.rainfall ? "cond-wet" : "cond-dry",
+    },
+  ];
+});
+
+const keyColumns = computed(() => [
+  {
+    title: "Sectors & Mini-Sectors",
+    entries: [
+      { swatch: "swatch-purple", desc: "Session Best" },
+      { swatch: "swatch-green", desc: "Personal Best" },
+      { swatch: "swatch-yellow", desc: "Slower / No Improvement" },
+      { swatch: "swatch-blue", desc: "Pit Lane" },
+    ],
+  },
+  {
+    title: "Timing & Tyres",
+    entries: [
+      {
+        pills: [{ text: "INT", cls: "token-green mono" }],
+        desc: "Closing on car ahead",
+      },
+      {
+        pills: [{ text: "FL", cls: "token-purple" }],
+        desc: "Fastest Lap of Session",
+      },
+      {
+        pills: [
+          { text: "N", cls: "token-green mono" },
+          { text: "U", cls: "token-muted mono" },
+        ],
+        desc: "New / Used tyre set",
+      },
+      {
+        pills: [{ text: "ST", cls: "token-code mono" }],
+        desc: `Speed Trap (${getSpeedUnitLabel(unitSystem.value)})`,
+      },
+    ],
+  },
+  {
+    title: "Driver Status",
+    entries: [
+      { pills: [{ text: "PIT", cls: "token-blue" }], desc: "In Pit Lane" },
+      {
+        pills: [{ text: "OUT", cls: "token-green" }],
+        desc: "Pit Exit / Out Lap",
+      },
+      { pills: [{ text: "DNF", cls: "token-red" }], desc: "Did Not Finish" },
+      { pills: [{ text: "DNS", cls: "token-muted" }], desc: "Did Not Start" },
+    ],
+  },
+]);
 
 const clearPollTimer = () => {
   if (pollTimer) {
@@ -308,33 +383,9 @@ onUnmounted(() => {
 
     <!-- Weather Strip -->
     <section v-if="weather" class="weather-strip" aria-label="Track Weather">
-      <div class="weather-item">
-        <span class="w-label">AIR</span>
-        <span class="w-val mono">{{
-          formatTemperature(weather.air_temp, unitSystem)
-        }}</span>
-      </div>
-      <div class="weather-item">
-        <span class="w-label">TRACK</span>
-        <span class="w-val mono">{{
-          formatTemperature(weather.track_temp, unitSystem)
-        }}</span>
-      </div>
-      <div class="weather-item">
-        <span class="w-label">HUMIDITY</span>
-        <span class="w-val mono">{{ weather.humidity ?? "—" }}%</span>
-      </div>
-      <div class="weather-item">
-        <span class="w-label">WIND</span>
-        <span class="w-val mono">{{
-          formatWindSpeed(weather.wind_speed, unitSystem)
-        }}</span>
-      </div>
-      <div class="weather-item">
-        <span class="w-label">CONDITIONS</span>
-        <span class="w-val" :class="weather.rainfall ? 'cond-wet' : 'cond-dry'">
-          {{ weather.rainfall ? "WET / RAIN" : "DRY" }}
-        </span>
+      <div v-for="item in weatherItems" :key="item.label" class="weather-item">
+        <span class="w-label">{{ item.label }}</span>
+        <span class="w-val" :class="item.valClass">{{ item.value }}</span>
       </div>
     </section>
 
@@ -402,96 +453,31 @@ onUnmounted(() => {
         </summary>
 
         <div class="key-grid">
-          <div class="key-col">
-            <h4 class="key-col-title">Sectors &amp; Mini-Sectors</h4>
+          <div v-for="col in keyColumns" :key="col.title" class="key-col">
+            <h4 class="key-col-title">{{ col.title }}</h4>
             <div class="key-list">
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="swatch swatch-purple"></span
-                ></span>
-                <span class="key-desc">Session Best</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="swatch swatch-green"></span
-                ></span>
-                <span class="key-desc">Personal Best</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="swatch swatch-yellow"></span
-                ></span>
-                <span class="key-desc">Slower / No Improvement</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="swatch swatch-blue"></span
-                ></span>
-                <span class="key-desc">Pit Lane</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="key-col">
-            <h4 class="key-col-title">Timing &amp; Tyres</h4>
-            <div class="key-list">
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-green mono">INT</span></span
-                >
-                <span class="key-desc">Closing on car ahead</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-purple">FL</span></span
-                >
-                <span class="key-desc">Fastest Lap of Session</span>
-              </div>
-              <div class="key-entry">
+              <div
+                v-for="entry in col.entries"
+                :key="entry.desc"
+                class="key-entry"
+              >
                 <span class="key-token">
-                  <span class="token-pill token-green mono">N</span>
-                  <span class="token-sep">/</span>
-                  <span class="token-pill token-muted mono">U</span>
+                  <span
+                    v-if="entry.swatch"
+                    class="swatch"
+                    :class="entry.swatch"
+                  ></span>
+                  <template
+                    v-for="(pill, idx) in entry.pills || []"
+                    :key="pill.text"
+                  >
+                    <span v-if="idx > 0" class="token-sep">/</span>
+                    <span class="token-pill" :class="pill.cls">{{
+                      pill.text
+                    }}</span>
+                  </template>
                 </span>
-                <span class="key-desc">New / Used tyre set</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-code mono">ST</span></span
-                >
-                <span class="key-desc"
-                  >Speed Trap ({{ getSpeedUnitLabel(unitSystem) }})</span
-                >
-              </div>
-            </div>
-          </div>
-
-          <div class="key-col">
-            <h4 class="key-col-title">Driver Status</h4>
-            <div class="key-list">
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-blue">PIT</span></span
-                >
-                <span class="key-desc">In Pit Lane</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-green">OUT</span></span
-                >
-                <span class="key-desc">Pit Exit / Out Lap</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-red">DNF</span></span
-                >
-                <span class="key-desc">Did Not Finish</span>
-              </div>
-              <div class="key-entry">
-                <span class="key-token"
-                  ><span class="token-pill token-muted">DNS</span></span
-                >
-                <span class="key-desc">Did Not Start</span>
+                <span class="key-desc">{{ entry.desc }}</span>
               </div>
             </div>
           </div>
@@ -731,42 +717,6 @@ html[data-theme="dark"] .track-pill.flag-red {
   background: var(--primary-color);
   border-color: var(--primary-color);
   color: #ffffff;
-}
-
-.tz-toggle {
-  display: inline-flex;
-  border: 1px solid var(--border-color);
-  border-radius: 7px;
-  background: var(--card-bg-color);
-  padding: 2px;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.tz-btn {
-  border: none;
-  background: transparent;
-  color: var(--muted-text-color);
-  font-size: 0.74rem;
-  font-weight: 700;
-  padding: 0.34rem 0.6rem;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.tz-btn:hover {
-  color: var(--text-color);
-}
-
-.tz-btn.active {
-  background: var(--accent-color);
-  color: #b91c1c;
-}
-
-html[data-theme="dark"] .tz-btn.active {
-  color: #ff6b5b;
 }
 
 .weather-strip {

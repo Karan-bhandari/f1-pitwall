@@ -1,35 +1,22 @@
-import datetime
-import math
-import time
 import concurrent.futures
+import datetime
+import sys
+import time
 from flask import Blueprint, request, jsonify
 import fastf1
 from fastf1.ergast import Ergast
 import pandas as pd
-from ..utils import validate_year, error_response, get_historical_team_color
+from ..utils import (
+    validate_year,
+    error_response,
+    get_historical_team_color,
+    safe_int as _safe_int,
+    safe_float as _safe_float,
+    first_str,
+)
 from .standings import calculate_schedule_progress
 
 stats_bp = Blueprint("stats", __name__)
-
-
-def _safe_int(val, default=0):
-    """Safely convert a value to int, handling NaN, strings, and None."""
-    try:
-        if pd.isna(val):
-            return default
-        return int(val)
-    except (ValueError, TypeError):
-        return default
-
-
-def _safe_float(val, default=0.0):
-    """Safely convert a value to float, handling NaN and None."""
-    try:
-        if pd.isna(val):
-            return default
-        return float(val)
-    except (ValueError, TypeError):
-        return default
 
 
 def _safe_str(val, default=""):
@@ -38,6 +25,66 @@ def _safe_str(val, default=""):
         return default
     s = str(val).strip()
     return default if s.lower() in ("nan", "none", "null") else s
+
+
+def _driver_code(row):
+    """Return 3-letter driver code from row, falling back to familyName prefix."""
+    return (
+        _safe_str(row.get("driverCode"))
+        or _safe_str(row.get("familyName", "??"))[:3].upper()
+    )
+
+
+def _init_driver_meta(d_id, row, c_id, c_name, from_standings=False):
+    """Build initial driver metadata dict from a standings or race result row."""
+    return {
+        "driver_id": d_id,
+        "driver_number": _safe_str(
+            row.get("driverNumber", "??" if from_standings else row.get("number", "??"))
+        ),
+        "driver_code": _driver_code(row),
+        "driver_name": f"{_safe_str(row.get('givenName'))} {_safe_str(row.get('familyName'))}".strip(),
+        "nationality": _safe_str(row.get("driverNationality")),
+        "date_of_birth": _safe_str(row.get("dateOfBirth")),
+        "standings_position": (
+            _safe_int(row.get("position"), 999) if from_standings else 999
+        ),
+        "standings_points": _safe_float(row.get("points")) if from_standings else 0.0,
+        "standings_wins": _safe_int(row.get("wins")) if from_standings else 0,
+        "team_id": c_id,
+        "team_name": c_name,
+    }
+
+
+def _collect_ergast_rounds(futures, with_info=False):
+    """Aggregate paginated Ergast futures into a round-keyed dict."""
+    rounds = {}
+    for fut in futures:
+        try:
+            res = fut.result()
+            if not res or not hasattr(res, "content") or not res.content:
+                continue
+            for i, df in enumerate(res.content):
+                if df.empty:
+                    continue
+                desc_row = (
+                    res.description.iloc[i].to_dict()
+                    if hasattr(res, "description") and i < len(res.description)
+                    else {}
+                )
+                r_num = _safe_int(desc_row.get("round", i + 1))
+                if r_num not in rounds:
+                    rounds[r_num] = (
+                        {"info": desc_row, "drivers": {}} if with_info else {}
+                    )
+                bucket = rounds[r_num]["drivers"] if with_info else rounds[r_num]
+                for _, row in df.iterrows():
+                    d_id = _safe_str(row.get("driverId"))
+                    if d_id and d_id not in bucket:
+                        bucket[d_id] = row.to_dict()
+        except Exception:
+            pass
+    return rounds
 
 
 def safe_ergast_call(fn, *args, **kwargs):
@@ -180,9 +227,6 @@ def get_constructor_spotlight_stat(constr_dict, completed_rounds):
 @stats_bp.route("/season-stats", methods=["GET"])
 def get_season_stats():
     year = request.args.get("year", type=int)
-    if not year:
-        return error_response("Year parameter is required and must be an integer.", 400)
-
     is_valid, err_msg = validate_year(year)
     if not is_valid:
         return error_response(err_msg, 400)
@@ -268,86 +312,10 @@ def get_season_stats():
         except Exception:
             pass
 
-    # 2. Race Results aggregation across pages
-    # Structure: round_num -> { "info": dict, "drivers": { driver_id: row_dict } }
-    races_by_round = {}
-    for rf in race_futures:
-        try:
-            res = rf.result()
-            if not res or not hasattr(res, "content") or not res.content:
-                continue
-            for i, df in enumerate(res.content):
-                if df.empty:
-                    continue
-                desc_row = (
-                    res.description.iloc[i].to_dict()
-                    if hasattr(res, "description") and i < len(res.description)
-                    else {}
-                )
-                r_num = _safe_int(desc_row.get("round", i + 1))
-                if r_num not in races_by_round:
-                    races_by_round[r_num] = {
-                        "info": desc_row,
-                        "drivers": {},
-                    }
-                for _, row in df.iterrows():
-                    d_id = _safe_str(row.get("driverId"))
-                    if d_id and d_id not in races_by_round[r_num]["drivers"]:
-                        races_by_round[r_num]["drivers"][d_id] = row.to_dict()
-        except Exception:
-            pass
-
-    # 3. Qualifying Results aggregation
-    # Structure: round_num -> { driver_id: row_dict }
-    quali_by_round = {}
-    for qf in quali_futures:
-        try:
-            res = qf.result()
-            if not res or not hasattr(res, "content") or not res.content:
-                continue
-            for i, df in enumerate(res.content):
-                if df.empty:
-                    continue
-                desc_row = (
-                    res.description.iloc[i].to_dict()
-                    if hasattr(res, "description") and i < len(res.description)
-                    else {}
-                )
-                r_num = _safe_int(desc_row.get("round", i + 1))
-                if r_num not in quali_by_round:
-                    quali_by_round[r_num] = {}
-                for _, row in df.iterrows():
-                    d_id = _safe_str(row.get("driverId"))
-                    if d_id and d_id not in quali_by_round[r_num]:
-                        quali_by_round[r_num][d_id] = row.to_dict()
-        except Exception:
-            pass
-
-    # 4. Sprint Results aggregation
-    # Structure: round_num -> { driver_id: row_dict }
-    sprint_by_round = {}
-    for sf in sprint_futures:
-        try:
-            res = sf.result()
-            if not res or not hasattr(res, "content") or not res.content:
-                continue
-            for i, df in enumerate(res.content):
-                if df.empty:
-                    continue
-                desc_row = (
-                    res.description.iloc[i].to_dict()
-                    if hasattr(res, "description") and i < len(res.description)
-                    else {}
-                )
-                r_num = _safe_int(desc_row.get("round", i + 1))
-                if r_num not in sprint_by_round:
-                    sprint_by_round[r_num] = {}
-                for _, row in df.iterrows():
-                    d_id = _safe_str(row.get("driverId"))
-                    if d_id and d_id not in sprint_by_round[r_num]:
-                        sprint_by_round[r_num][d_id] = row.to_dict()
-        except Exception:
-            pass
+    # 2. Race, Qualifying, and Sprint Results aggregation across pages
+    races_by_round = _collect_ergast_rounds(race_futures, with_info=True)
+    quali_by_round = _collect_ergast_rounds(quali_futures)
+    sprint_by_round = _collect_ergast_rounds(sprint_futures)
 
     # 5. Schedule & Progress
     schedule = None
@@ -375,8 +343,6 @@ def get_season_stats():
     # 6. Map all drivers and constructors
     # Discovered metadata: driver_id -> metadata
     driver_meta = {}
-    # Driver primary team: driver_id -> constructor_id
-    driver_primary_teams = {}
     driver_team_counts = {}  # d_id -> { c_id: count }
     constructor_meta = {}  # c_id -> name
 
@@ -386,36 +352,11 @@ def get_season_stats():
             d_id = _safe_str(row.get("driverId"))
             if not d_id:
                 continue
-            c_ids = row.get("constructorIds")
-            c_names = row.get("constructorNames")
-            c_id = ""
-            c_name = "Unknown"
-            if isinstance(c_ids, list) and c_ids:
-                c_id = str(c_ids[0])
-            elif pd.notna(c_ids):
-                c_id = str(c_ids)
-            if isinstance(c_names, list) and c_names:
-                c_name = str(c_names[0])
-            elif pd.notna(c_names):
-                c_name = str(c_names)
-
-            code = _safe_str(row.get("driverCode"))
-            if not code:
-                code = _safe_str(row.get("familyName", "??"))[:3].upper()
-
-            driver_meta[d_id] = {
-                "driver_id": d_id,
-                "driver_number": _safe_str(row.get("driverNumber", "??")),
-                "driver_code": code,
-                "driver_name": f"{_safe_str(row.get('givenName'))} {_safe_str(row.get('familyName'))}".strip(),
-                "nationality": _safe_str(row.get("driverNationality")),
-                "date_of_birth": _safe_str(row.get("dateOfBirth")),
-                "standings_position": _safe_int(row.get("position"), 999),
-                "standings_points": _safe_float(row.get("points")),
-                "standings_wins": _safe_int(row.get("wins")),
-                "team_id": c_id,
-                "team_name": c_name,
-            }
+            c_id = first_str(row.get("constructorIds"), "")
+            c_name = first_str(row.get("constructorNames"), "Unknown")
+            driver_meta[d_id] = _init_driver_meta(
+                d_id, row, c_id, c_name, from_standings=True
+            )
             if c_id:
                 constructor_meta[c_id] = c_name
 
@@ -435,29 +376,11 @@ def get_season_stats():
                 )
 
             if d_id not in driver_meta:
-                code = _safe_str(row.get("driverCode"))
-                if not code:
-                    code = _safe_str(row.get("familyName", "??"))[:3].upper()
-                driver_meta[d_id] = {
-                    "driver_id": d_id,
-                    "driver_number": _safe_str(
-                        row.get("driverNumber", row.get("number", "??"))
-                    ),
-                    "driver_code": code,
-                    "driver_name": f"{_safe_str(row.get('givenName'))} {_safe_str(row.get('familyName'))}".strip(),
-                    "nationality": _safe_str(row.get("driverNationality")),
-                    "date_of_birth": _safe_str(row.get("dateOfBirth")),
-                    "standings_position": 999,
-                    "standings_points": 0.0,
-                    "standings_wins": 0,
-                    "team_id": c_id,
-                    "team_name": c_name,
-                }
+                driver_meta[d_id] = _init_driver_meta(d_id, row, c_id, c_name)
 
     # Resolve primary team for each driver
     for d_id, counts in driver_team_counts.items():
         best_team = max(counts.items(), key=lambda x: x[1])[0]
-        driver_primary_teams[d_id] = best_team
         if d_id in driver_meta:
             driver_meta[d_id]["team_id"] = best_team
             driver_meta[d_id]["team_name"] = constructor_meta.get(best_team, "Unknown")
@@ -716,6 +639,24 @@ def get_season_stats():
     teammate_h2h_by_driver = {}  # d_id -> teammate_h2h dict
     teammate_battles_list = []
 
+    def _battle_driver(d_id, pts, share):
+        m = driver_meta[d_id]
+        st = driver_stats[d_id]
+        fin = [f for f in st["finishes"] if f is not None]
+        return {
+            "driver_id": d_id,
+            "driver_code": m["driver_code"],
+            "driver_name": m["driver_name"],
+            "driver_number": m["driver_number"],
+            "points": pts,
+            "points_pct": share,
+            "wins": st["wins"],
+            "podiums": st["podiums"],
+            "poles": st["poles"],
+            "avg_finish": round(sum(fin) / len(fin), 1) if fin else None,
+            "dnfs": st["dnfs"],
+        }
+
     for c_id, d_ids in constructor_drivers_map.items():
         # Sort drivers by races entered with this team, then points
         d_ids_sorted = sorted(
@@ -801,33 +742,12 @@ def get_season_stats():
                 "race_losses": race_d1,
             }
 
-        # Any reserve drivers or single drivers
+        # Any reserve drivers
         for extra_id in reserves:
-            ref_id = d1_id if d1_id else d2_id
-            if ref_id:
-                meta_ref = driver_meta[ref_id]
-                teammate_h2h_by_driver[extra_id] = {
-                    "teammate_code": meta_ref["driver_code"],
-                    "teammate_name": meta_ref["driver_name"],
-                    "quali_wins": 0,
-                    "quali_losses": 0,
-                    "race_wins": 0,
-                    "race_losses": 0,
-                }
-            else:
-                teammate_h2h_by_driver[extra_id] = {
-                    "teammate_code": "—",
-                    "teammate_name": "None",
-                    "quali_wins": 0,
-                    "quali_losses": 0,
-                    "race_wins": 0,
-                    "race_losses": 0,
-                }
-
-        if d1_id and not d2_id:
-            teammate_h2h_by_driver[d1_id] = {
-                "teammate_code": "—",
-                "teammate_name": "None",
+            meta_ref = driver_meta[d1_id]
+            teammate_h2h_by_driver[extra_id] = {
+                "teammate_code": meta_ref["driver_code"],
+                "teammate_name": meta_ref["driver_name"],
                 "quali_wins": 0,
                 "quali_losses": 0,
                 "race_wins": 0,
@@ -837,22 +757,16 @@ def get_season_stats():
         # Build teammate battle object for this constructor
         if d1_id and d2_id and c_id in constructor_stats:
             cs = constructor_stats[c_id]
-            m1 = driver_meta[d1_id]
-            m2 = driver_meta[d2_id]
-            st1 = driver_stats[d1_id]
-            st2 = driver_stats[d2_id]
-
-            p1_pts = m1.get("standings_points", st1["total_points"])
-            p2_pts = m2.get("standings_points", st2["total_points"])
+            p1_pts = driver_meta[d1_id].get(
+                "standings_points", driver_stats[d1_id]["total_points"]
+            )
+            p2_pts = driver_meta[d2_id].get(
+                "standings_points", driver_stats[d2_id]["total_points"]
+            )
             c_pts = cs["points"] if cs["points"] > 0 else (p1_pts + p2_pts)
 
             p1_share = round((p1_pts / c_pts) * 100.0, 1) if c_pts > 0 else 0.0
             p2_share = round((p2_pts / c_pts) * 100.0, 1) if c_pts > 0 else 0.0
-
-            fin1 = [f for f in st1["finishes"] if f is not None]
-            fin2 = [f for f in st2["finishes"] if f is not None]
-            avg_fin1 = round(sum(fin1) / len(fin1), 1) if fin1 else None
-            avg_fin2 = round(sum(fin2) / len(fin2), 1) if fin2 else None
 
             reserve_objs = []
             for r_id in reserves:
@@ -876,32 +790,8 @@ def get_season_stats():
                     "team_color": cs["team_color"],
                     "position": cs["position"],
                     "total_points": c_pts,
-                    "driver1": {
-                        "driver_id": d1_id,
-                        "driver_code": m1["driver_code"],
-                        "driver_name": m1["driver_name"],
-                        "driver_number": m1["driver_number"],
-                        "points": p1_pts,
-                        "points_pct": p1_share,
-                        "wins": st1["wins"],
-                        "podiums": st1["podiums"],
-                        "poles": st1["poles"],
-                        "avg_finish": avg_fin1,
-                        "dnfs": st1["dnfs"],
-                    },
-                    "driver2": {
-                        "driver_id": d2_id,
-                        "driver_code": m2["driver_code"],
-                        "driver_name": m2["driver_name"],
-                        "driver_number": m2["driver_number"],
-                        "points": p2_pts,
-                        "points_pct": p2_share,
-                        "wins": st2["wins"],
-                        "podiums": st2["podiums"],
-                        "poles": st2["poles"],
-                        "avg_finish": avg_fin2,
-                        "dnfs": st2["dnfs"],
-                    },
+                    "driver1": _battle_driver(d1_id, p1_pts, p1_share),
+                    "driver2": _battle_driver(d2_id, p2_pts, p2_share),
                     "quali_h2h": {
                         "d1": quali_d1,
                         "d2": quali_d2,
@@ -1156,13 +1046,10 @@ def get_season_stats():
         podium_entries = []
         for p_row in sorted_finishers:
             c_id = _safe_str(p_row.get("constructorId"))
-            d_code = _safe_str(p_row.get("driverCode"))
-            if not d_code:
-                d_code = _safe_str(p_row.get("familyName", "??"))[:3].upper()
             podium_entries.append(
                 {
                     "position": _safe_int(p_row.get("position")),
-                    "driver_code": d_code,
+                    "driver_code": _driver_code(p_row),
                     "driver_name": f"{_safe_str(p_row.get('givenName'))} {_safe_str(p_row.get('familyName'))}".strip(),
                     "team_name": _safe_str(p_row.get("constructorName", "Unknown")),
                     "team_color": get_historical_team_color(c_id),
@@ -1338,24 +1225,18 @@ def get_driver_career():
         print(f"[STATS] Driver '{driver_id}' lookup failed: {e}", file=sys.stderr)
         return error_response(f"Could not retrieve info for driver '{driver_id}'.", 404)
 
-    # 2. Race starts, wins, podiums
-    starts = _safe_int(getattr(starts_fut.result(), "total_results", 0))
-    wins = _safe_int(getattr(wins_fut.result(), "total_results", 0))
-    p2 = _safe_int(getattr(p2_fut.result(), "total_results", 0))
-    p3 = _safe_int(getattr(p3_fut.result(), "total_results", 0))
-    podiums = wins + p2 + p3
+    def _fut_total(fut):
+        try:
+            return _safe_int(getattr(fut.result(), "total_results", 0))
+        except Exception:
+            return 0
 
-    # 3. Poles (wrap in try/except fallback for pre-1994 or missing)
-    try:
-        poles = _safe_int(getattr(poles_fut.result(), "total_results", 0))
-    except Exception:
-        poles = 0
-
-    # 4. Fastest laps
-    try:
-        fastest_laps = _safe_int(getattr(fl_fut.result(), "total_results", 0))
-    except Exception:
-        fastest_laps = 0
+    # 2. Race starts, wins, podiums, poles, fastest laps
+    starts = _fut_total(starts_fut)
+    wins = _fut_total(wins_fut)
+    podiums = wins + _fut_total(p2_fut) + _fut_total(p3_fut)
+    poles = _fut_total(poles_fut)
+    fastest_laps = _fut_total(fl_fut)
 
     # 5. Seasons
     seasons_count = 0
@@ -1371,9 +1252,7 @@ def get_driver_career():
         pass
 
     driver_name = f"{_safe_str(info_row.get('givenName'))} {_safe_str(info_row.get('familyName'))}".strip()
-    driver_code = _safe_str(info_row.get("driverCode"))
-    if not driver_code:
-        driver_code = _safe_str(info_row.get("familyName", "??"))[:3].upper()
+    driver_code = _driver_code(info_row)
 
     dob_raw = _safe_str(info_row.get("dateOfBirth"))
     date_of_birth = dob_raw.split()[0] if dob_raw else ""

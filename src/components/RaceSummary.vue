@@ -283,7 +283,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
                 <span class="driver-name">{{ driver.full_name }}</span>
                 <span
                   v-if="driver.has_fastest_lap"
-                  class="fl-pill fl-badge"
+                  class="fl-pill"
                   :title="
                     isPracticeSession
                       ? 'Fastest Lap of the Session'
@@ -353,14 +353,14 @@ const calculatePosition = (startLap, lapCount = 1) => {
                     v-if="
                       driver.pit_stops !== undefined && driver.pit_stops > 0
                     "
-                    class="stop-badge stops-badge"
+                    class="stop-badge"
                   >
                     {{ driver.pit_stops }}
                     {{ driver.pit_stops === 1 ? "Stop" : "Stops" }}
                   </span>
                   <span
                     v-else-if="driver.pit_stops === 0 && !isRetired(driver)"
-                    class="stop-badge stops-badge"
+                    class="stop-badge"
                   >
                     0 Stops
                   </span>
@@ -369,7 +369,7 @@ const calculatePosition = (startLap, lapCount = 1) => {
 
                 <!-- Points Slot -->
                 <div class="status-col status-col-pts">
-                  <span v-if="driver.points > 0" class="pts-pill points-badge">
+                  <span v-if="driver.points > 0" class="pts-pill">
                     +{{ driver.points }}
                   </span>
                   <span v-else class="pts-zero metric-empty" aria-hidden="true"
@@ -394,12 +394,12 @@ const calculatePosition = (startLap, lapCount = 1) => {
             <!-- Steward Penalties & Track Limit Warnings (Dedicated vertical stack) -->
             <div
               v-if="driver.penalties && driver.penalties.length > 0"
-              class="steward-pills-stack steward-pills-row"
+              class="steward-pills-stack"
             >
               <span
                 v-for="(p, pIdx) in driver.penalties"
                 :key="pIdx"
-                class="steward-pill penalty-chip"
+                class="steward-pill"
                 :class="p.badge === 'B&W Flag' ? 'is-bw-flag' : 'is-penalty'"
                 :title="
                   p.reason ? `${p.badge} — ${p.reason}` : p.message || p.badge
@@ -475,18 +475,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   border-radius: 4px;
 }
 
-.historical-note {
-  padding: 1rem 1.5rem;
-  background: var(--accent-color);
-  color: var(--primary-color);
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.historical-note p {
-  margin: 0;
-}
-
 .summary-header {
   display: flex;
   background: var(--item-bg-color);
@@ -548,10 +536,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   white-space: nowrap;
 }
 
-.rows-container {
-  position: relative;
-}
-
 /* Ensure the stint timeline container precisely matches the header width */
 .col-stints {
   flex: 1;
@@ -596,42 +580,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   color: var(--text-color);
 }
 
-.pos-delta {
-  min-width: 34px;
-  text-align: center;
-  font-size: 0.7rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  padding: 1px 4px;
-  border-radius: 4px;
-  line-height: 1.2;
-}
-
-.pos-delta.gain {
-  color: #15803d;
-  background: rgba(21, 128, 61, 0.14);
-}
-
-:global(html[data-theme="dark"]) .pos-delta.gain {
-  color: #4ade80;
-  background: rgba(74, 222, 128, 0.14);
-}
-
-.pos-delta.loss {
-  color: #d9261c;
-  background: rgba(217, 38, 28, 0.12);
-}
-
-:global(html[data-theme="dark"]) .pos-delta.loss {
-  color: #ff4d42;
-  background: rgba(255, 59, 48, 0.16);
-}
-
-.pos-delta.even {
-  color: var(--muted-text-color);
-  background: rgba(128, 128, 128, 0.12);
-}
-
 .col-driver {
   width: 250px;
   display: flex;
@@ -644,26 +592,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.fl-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(147, 51, 234, 0.14);
-  color: #7e22ce;
-  border: 1px solid rgba(147, 51, 234, 0.35);
-  line-height: 1.2;
-}
-
-:global(html[data-theme="dark"]) .fl-pill {
-  background: rgba(179, 90, 209, 0.2);
-  color: #d48ef0;
-  border-color: rgba(179, 90, 209, 0.4);
 }
 
 .col-status {
@@ -777,24 +705,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   line-height: 1.2;
 }
 
-.pts-pill {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: rgba(21, 128, 61, 0.14);
-  color: #15803d;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-
-:global(html[data-theme="dark"]) .pts-pill {
-  background: rgba(74, 222, 128, 0.16);
-  color: #4ade80;
-}
-
 .metric-empty {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
@@ -821,75 +731,8 @@ const calculatePosition = (startLap, lapCount = 1) => {
   max-width: 100%;
 }
 
-.steward-pills-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
+.race-summary-container .steward-pills-stack {
   margin-top: 4px;
-  width: 100%;
-}
-
-.steward-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 4px;
-  cursor: help;
-  line-height: 1.2;
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-  max-width: 100%;
-}
-
-.steward-pill.is-penalty {
-  background: rgba(217, 119, 6, 0.14);
-  color: #b45309;
-  border: 1px solid rgba(217, 119, 6, 0.38);
-}
-
-:global(html[data-theme="dark"]) .steward-pill.is-penalty {
-  background: rgba(245, 158, 11, 0.16);
-  color: #fbbf24;
-  border-color: rgba(245, 158, 11, 0.4);
-}
-
-.steward-pill.is-bw-flag {
-  background: var(--item-bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
-.status-badge {
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-  font-family: "JetBrains Mono", monospace;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.status-dnf {
-  background: rgba(235, 59, 53, 0.2);
-  color: #eb3b35;
-  border: 1px solid rgba(235, 59, 53, 0.4);
-}
-
-.status-dns {
-  background: rgba(142, 142, 147, 0.2);
-  color: #8e8e93;
-  border: 1px solid rgba(142, 142, 147, 0.4);
-}
-
-.status-dsq {
-  background: rgba(175, 82, 222, 0.2);
-  color: #af52de;
-  border: 1px solid rgba(175, 82, 222, 0.4);
 }
 
 .sr-only {
@@ -932,11 +775,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   white-space: nowrap;
 }
 
-.col-stints {
-  flex: 1;
-  padding-left: 1.5rem;
-}
-
 .stint-timeline {
   position: relative; /* CRITICAL: Must be relative for absolute segments */
   height: 34px;
@@ -957,6 +795,11 @@ const calculatePosition = (startLap, lapCount = 1) => {
   border-right: 1px solid rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
   transition: transform 0.2s ease;
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
 }
 
 .stint-segment:hover {
@@ -997,15 +840,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Stint background effects */
-.stint-segment {
-  background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.15) 0%,
-    rgba(0, 0, 0, 0.05) 100%
-  );
-}
-
 .loading-state,
 .error-state,
 .no-data {
@@ -1013,12 +847,6 @@ const calculatePosition = (startLap, lapCount = 1) => {
   text-align: center;
   color: var(--muted-text-color);
   font-weight: 500;
-}
-
-.no-data {
-  padding: 4rem;
-  text-align: center;
-  color: var(--muted-text-color);
 }
 
 .error-state p {

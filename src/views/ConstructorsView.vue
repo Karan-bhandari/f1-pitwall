@@ -1,58 +1,24 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed } from "vue";
 import { RouterLink } from "vue-router";
-import { getSeasonStats } from "../api";
+import { useSeasonStats } from "../api";
 import F1Icon from "../components/F1Icon.vue";
 
 const props = defineProps({
-  year: {
-    type: Number,
-    required: true,
-  },
-  theme: {
-    type: String,
-    default: "light",
-  },
+  year: { type: Number, required: true },
+  theme: String,
 });
 
 // --- State ---
-const loading = ref(true);
-const error = ref(null);
-const seasonStats = ref(null);
+const {
+  data: seasonStats,
+  loading,
+  error,
+  refresh: fetchConstructorsData,
+} = useSeasonStats(() => props.year);
 
 const selectedTier = ref("all"); // 'all' | 'title' | 'midfield' | 'backmarker'
 const searchQuery = ref("");
-let statsReqId = 0;
-
-// --- Data Fetching ---
-async function fetchConstructorsData(year) {
-  const reqId = ++statsReqId;
-  loading.value = true;
-  error.value = null;
-  try {
-    const data = await getSeasonStats(year);
-    if (reqId !== statsReqId) return;
-    if (!data) {
-      throw new Error(`No data returned for ${year}`);
-    }
-    seasonStats.value = data;
-  } catch (err) {
-    if (reqId !== statsReqId) return;
-    error.value = err.message || "Failed to load constructor statistics.";
-  } finally {
-    if (reqId === statsReqId) {
-      loading.value = false;
-    }
-  }
-}
-
-watch(
-  () => props.year,
-  (newYear) => {
-    fetchConstructorsData(newYear);
-  },
-  { immediate: true },
-);
 
 // --- Historical Pre-1958 Check ---
 const isPre1958 = computed(() => {
@@ -65,33 +31,37 @@ const isPre1958 = computed(() => {
 });
 
 // --- Tier & Search Filtering ---
+const TIERS = [
+  { id: "all", label: "All Teams", match: () => true },
+  { id: "title", label: "Title Fight (P1–P3)", match: (c) => c.position <= 3 },
+  {
+    id: "midfield",
+    label: "Midfield (P4–P7)",
+    match: (c) => c.position >= 4 && c.position <= 7,
+  },
+  {
+    id: "backmarker",
+    label: "Backmarkers (P8+)",
+    match: (c) => c.position >= 8,
+  },
+];
+
 const constructors = computed(() => {
   return seasonStats.value?.constructors || [];
 });
 
-const tierCounts = computed(() => {
-  const list = constructors.value;
-  return {
-    all: list.length,
-    title: list.filter((c) => c.position <= 3).length,
-    midfield: list.filter((c) => c.position >= 4 && c.position <= 7).length,
-    backmarker: list.filter((c) => c.position >= 8).length,
-  };
-});
+const tierCounts = computed(() =>
+  Object.fromEntries(
+    TIERS.map((t) => [t.id, constructors.value.filter(t.match).length]),
+  ),
+);
 
 const filteredConstructors = computed(() => {
-  let list = constructors.value;
+  const tier = TIERS.find((t) => t.id === selectedTier.value);
+  const list = tier
+    ? constructors.value.filter(tier.match)
+    : constructors.value;
 
-  // 1. Tier filtering
-  if (selectedTier.value === "title") {
-    list = list.filter((c) => c.position <= 3);
-  } else if (selectedTier.value === "midfield") {
-    list = list.filter((c) => c.position >= 4 && c.position <= 7);
-  } else if (selectedTier.value === "backmarker") {
-    list = list.filter((c) => c.position >= 8);
-  }
-
-  // 2. Search query filtering
   const q = searchQuery.value.trim().toLowerCase();
   if (!q) return list;
 
@@ -157,51 +127,17 @@ function d2Share(team) {
         <div class="header-actions" v-if="!isPre1958 && !loading && !error">
           <div class="tier-pills-bar" role="tablist" aria-label="Battle Tiers">
             <button
+              v-for="tier in TIERS"
+              :key="tier.id"
               class="tier-pill-btn"
-              :class="{ active: selectedTier === 'all' }"
+              :class="{ active: selectedTier === tier.id }"
               role="tab"
-              :aria-selected="selectedTier === 'all'"
-              @click="selectedTier = 'all'"
+              :aria-selected="selectedTier === tier.id"
+              @click="selectedTier = tier.id"
             >
-              <span>All Teams</span>
-              <span class="count-badge" v-if="tierCounts.all > 0">{{
-                tierCounts.all
-              }}</span>
-            </button>
-            <button
-              class="tier-pill-btn"
-              :class="{ active: selectedTier === 'title' }"
-              role="tab"
-              :aria-selected="selectedTier === 'title'"
-              @click="selectedTier = 'title'"
-            >
-              <span>Title Fight (P1–P3)</span>
-              <span class="count-badge" v-if="tierCounts.title > 0">{{
-                tierCounts.title
-              }}</span>
-            </button>
-            <button
-              class="tier-pill-btn"
-              :class="{ active: selectedTier === 'midfield' }"
-              role="tab"
-              :aria-selected="selectedTier === 'midfield'"
-              @click="selectedTier = 'midfield'"
-            >
-              <span>Midfield (P4–P7)</span>
-              <span class="count-badge" v-if="tierCounts.midfield > 0">{{
-                tierCounts.midfield
-              }}</span>
-            </button>
-            <button
-              class="tier-pill-btn"
-              :class="{ active: selectedTier === 'backmarker' }"
-              role="tab"
-              :aria-selected="selectedTier === 'backmarker'"
-              @click="selectedTier = 'backmarker'"
-            >
-              <span>Backmarkers (P8+)</span>
-              <span class="count-badge" v-if="tierCounts.backmarker > 0">{{
-                tierCounts.backmarker
+              <span>{{ tier.label }}</span>
+              <span class="count-badge" v-if="tierCounts[tier.id] > 0">{{
+                tierCounts[tier.id]
               }}</span>
             </button>
           </div>
@@ -293,7 +229,6 @@ function d2Share(team) {
           v-for="team in filteredConstructors"
           :key="team.constructor_id"
           class="constructor-card"
-          :class="`pos-tier-${team.position <= 3 ? team.position : 'other'}`"
         >
           <!-- 1. Top Team Color Strip -->
           <div
@@ -367,7 +302,7 @@ function d2Share(team) {
                 </span>
                 <span
                   v-if="team.fastest_laps > 0"
-                  class="milestone-pill fl-pill"
+                  class="milestone-pill fl-milestone-pill"
                 >
                   {{ team.fastest_laps }} FL
                 </span>
@@ -550,69 +485,16 @@ function d2Share(team) {
   box-sizing: border-box;
 }
 
-.mono {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
 /* --- Page Header --- */
-.page-header {
-  margin-bottom: 2rem;
-  background: var(--card-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-  box-shadow: 0 4px 16px var(--shadow-color);
-  overflow: hidden;
-}
-
 .header-main {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
 }
 
-.header-title-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.header-icon-wrap {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  background: var(--accent-color);
-  color: var(--primary-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid rgba(225, 6, 0, 0.2);
-}
-
-.page-title {
-  font-size: 1.65rem;
-  font-weight: 800;
-  color: var(--text-color);
-  margin: 0;
-  line-height: 1.2;
-  letter-spacing: -0.5px;
-}
-
-.page-subtitle {
-  font-size: 0.95rem;
-  color: var(--muted-text-color);
-  margin: 0.25rem 0 0;
-}
-
 /* --- Controls: Tier Filter & Search --- */
 .header-actions {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
   padding-top: 0.5rem;
   border-top: 1px solid var(--border-color);
 }
@@ -679,29 +561,9 @@ function d2Share(team) {
 }
 
 .search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
   min-width: 260px;
   max-width: 340px;
   flex: 1;
-}
-
-.search-input {
-  width: 100%;
-  background: var(--item-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 0.45rem 2rem 0.45rem 0.75rem;
-  font-size: 0.85rem;
-  color: var(--text-color);
-  outline: none;
-  transition: border-color 0.2s ease;
-}
-
-.search-input:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--accent-color);
 }
 
 .search-input:focus-visible {
@@ -733,37 +595,6 @@ function d2Share(team) {
 }
 
 /* --- State Containers (Loading, Error, Historical) --- */
-.state-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3.5rem 1.5rem;
-  text-align: center;
-  background: var(--card-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px var(--shadow-color);
-  margin-top: 1.5rem;
-  overflow: hidden;
-}
-
-.spinner {
-  width: 44px;
-  height: 44px;
-  border: 4px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.85s linear infinite;
-  margin-bottom: 1.25rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .error-state {
   color: var(--primary-color);
 }
@@ -773,23 +604,6 @@ function d2Share(team) {
   font-size: 1.05rem;
   margin: 1rem 0 1.25rem;
   max-width: 500px;
-}
-
-.retry-btn {
-  background: var(--primary-color);
-  color: #ffffff;
-  border: none;
-  padding: 0.55rem 1.4rem;
-  border-radius: 6px;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.retry-btn:hover {
-  opacity: 0.9;
 }
 
 .retry-btn:focus-visible {
@@ -882,24 +696,6 @@ function d2Share(team) {
   border-radius: 12px;
   color: var(--muted-text-color);
   font-size: 1rem;
-}
-
-.reset-filter-btn {
-  margin-top: 1rem;
-  background: var(--item-bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  padding: 0.45rem 1rem;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-
-.reset-filter-btn:hover {
-  border-color: var(--primary-color);
 }
 
 .reset-filter-btn:focus-visible {
@@ -1128,13 +924,13 @@ function d2Share(team) {
   color: #818cf8;
 }
 
-.fl-pill {
+.fl-milestone-pill {
   background: rgba(236, 72, 153, 0.12);
   color: #be185d;
   border-color: rgba(236, 72, 153, 0.28);
 }
 
-:global(html[data-theme="dark"]) .fl-pill {
+:global(html[data-theme="dark"]) .fl-milestone-pill {
   color: #f472b6;
 }
 
@@ -1190,10 +986,6 @@ function d2Share(team) {
 .progress-seg {
   height: 100%;
   transition: width 0.35s ease;
-}
-
-.seg-driver-1 {
-  /* Dynamic team color */
 }
 
 .seg-driver-2 {
@@ -1322,69 +1114,11 @@ function d2Share(team) {
 }
 
 /* --- Core 4 Metrics Grid --- */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.65rem;
-}
-
-.metric-box {
-  min-height: 78px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 0.65rem 0.75rem;
-  background: var(--item-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.metric-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--muted-text-color);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
 .metric-val {
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   margin: 0.15rem 0;
 }
 
-.metric-subtext {
-  font-size: 0.72rem;
-  color: var(--muted-text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
 /* Spotlight Card Accent */
-.spotlight-box {
-  background: linear-gradient(
-    145deg,
-    var(--item-bg-color) 0%,
-    rgba(225, 6, 0, 0.05) 100%
-  );
-  border-color: rgba(225, 6, 0, 0.25);
-}
-
-.spotlight-label {
-  color: var(--primary-color);
-}
-
 .spotlight-val {
   color: var(--primary-color);
   font-weight: 800;

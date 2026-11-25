@@ -18,14 +18,59 @@ const hasConstructors = computed(() => {
   return data.value?.constructors?.length > 0;
 });
 
-const maxDriverPoints = computed(() => {
-  if (!data.value?.drivers?.length) return 1;
-  return Math.max(...data.value.drivers.map((d) => d.points), 1);
+const championCards = computed(() => {
+  const d = data.value;
+  if (!d) return [];
+  return [
+    d.wdc_champion && {
+      key: "wdc",
+      cardClass: "wdc-card",
+      ribbon: `${props.year} WORLD DRIVERS' CHAMPION`,
+      color: `#${d.wdc_champion.team_color || "e10600"}`,
+      code: d.wdc_champion.driver_code,
+      name: d.wdc_champion.driver_name,
+      isConstructor: false,
+      subtitle: d.wdc_champion.team_name,
+      clinchedEarly: d.wdc_champion.clinched_early,
+      roundsToSpare: d.wdc_champion.rounds_to_spare,
+      points: d.wdc_champion.points,
+      wins: d.wdc_champion.wins,
+    },
+    d.wcc_champion && {
+      key: "wcc",
+      cardClass: "wcc-card",
+      ribbon: `${props.year} WORLD CONSTRUCTORS' CHAMPION`,
+      color: `#${d.wcc_champion.team_color || "e10600"}`,
+      code: null,
+      name: d.wcc_champion.constructor_name,
+      isConstructor: true,
+      subtitle: "Constructors' Championship",
+      clinchedEarly: d.wcc_champion.clinched_early,
+      roundsToSpare: d.wcc_champion.rounds_to_spare,
+      points: d.wcc_champion.points,
+      wins: d.wcc_champion.wins,
+    },
+  ].filter(Boolean);
 });
 
-const maxConstructorPoints = computed(() => {
-  if (!data.value?.constructors?.length) return 1;
-  return Math.max(...data.value.constructors.map((c) => c.points), 1);
+const activeStandings = computed(() => {
+  const isDrivers = activeTab.value === "drivers";
+  const list = isDrivers
+    ? data.value?.drivers || []
+    : data.value?.constructors || [];
+  const maxPts = Math.max(...list.map((item) => item.points), 1);
+  return list.map((item) => ({
+    position: item.position,
+    teamColor: item.team_color,
+    primaryLabel: isDrivers ? item.driver_code : item.constructor_name,
+    driverName: isDrivers ? item.driver_name : null,
+    teamName: isDrivers ? item.team_name : null,
+    isChampion: item.is_champion,
+    points: item.points,
+    maxPoints: maxPts,
+    gapToLeader: item.gap_to_leader,
+    wins: item.wins,
+  }));
 });
 
 const roundLabel = computed(() => {
@@ -193,104 +238,50 @@ const barWidth = (points, max) => {
     <!-- Content -->
     <div v-else-if="data" class="standings-content">
       <!-- World Champions Hero Banner (WDC & WCC) -->
-      <div v-if="data.wdc_champion || data.wcc_champion" class="champions-hero">
-        <!-- WDC Champion Card -->
+      <div v-if="championCards.length" class="champions-hero">
         <div
-          v-if="data.wdc_champion"
-          class="champion-card wdc-card"
-          :style="{
-            '--champion-color':
-              '#' + (data.wdc_champion.team_color || 'e10600'),
-          }"
+          v-for="card in championCards"
+          :key="card.key"
+          class="champion-card"
+          :class="card.cardClass"
+          :style="{ '--champion-color': card.color }"
         >
           <div class="champion-ribbon">
             <F1Icon name="crown" :size="16" class="crown-svg" />
-            <span class="ribbon-text">{{ year }} WORLD DRIVERS' CHAMPION</span>
+            <span class="ribbon-text">{{ card.ribbon }}</span>
           </div>
           <div class="champion-body">
             <div
               class="champion-avatar-bar"
-              :style="{
-                backgroundColor:
-                  '#' + (data.wdc_champion.team_color || 'e10600'),
-              }"
+              :style="{ backgroundColor: card.color }"
             ></div>
             <div class="champion-details">
               <div class="champion-name-row">
-                <span class="champion-code">{{
-                  data.wdc_champion.driver_code
+                <span v-if="card.code" class="champion-code">{{
+                  card.code
                 }}</span>
-                <span class="champion-name">{{
-                  data.wdc_champion.driver_name
-                }}</span>
+                <span
+                  class="champion-name"
+                  :class="{ constructor: card.isConstructor }"
+                  >{{ card.name }}</span
+                >
               </div>
-              <div class="champion-team">{{ data.wdc_champion.team_name }}</div>
-              <div v-if="data.wdc_champion.clinched_early" class="clinch-badge">
+              <div class="champion-team">{{ card.subtitle }}</div>
+              <div v-if="card.clinchedEarly" class="clinch-badge">
                 <F1Icon name="sparkles" :size="14" /> Clinched with
-                {{ data.wdc_champion.rounds_to_spare }} round{{
-                  data.wdc_champion.rounds_to_spare > 1 ? "s" : ""
+                {{ card.roundsToSpare }} round{{
+                  card.roundsToSpare > 1 ? "s" : ""
                 }}
                 remaining
               </div>
             </div>
             <div class="champion-stats">
               <div class="stat-box">
-                <span class="stat-num">{{ data.wdc_champion.points }}</span>
+                <span class="stat-num">{{ card.points }}</span>
                 <span class="stat-lbl">PTS</span>
               </div>
-              <div v-if="data.wdc_champion.wins > 0" class="stat-box wins">
-                <span class="stat-num">{{ data.wdc_champion.wins }}</span>
-                <span class="stat-lbl">WINS</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- WCC Champion Card -->
-        <div
-          v-if="data.wcc_champion"
-          class="champion-card wcc-card"
-          :style="{
-            '--champion-color':
-              '#' + (data.wcc_champion.team_color || 'e10600'),
-          }"
-        >
-          <div class="champion-ribbon">
-            <F1Icon name="crown" :size="16" class="crown-svg" />
-            <span class="ribbon-text"
-              >{{ year }} WORLD CONSTRUCTORS' CHAMPION</span
-            >
-          </div>
-          <div class="champion-body">
-            <div
-              class="champion-avatar-bar"
-              :style="{
-                backgroundColor:
-                  '#' + (data.wcc_champion.team_color || 'e10600'),
-              }"
-            ></div>
-            <div class="champion-details">
-              <div class="champion-name-row">
-                <span class="champion-name constructor">{{
-                  data.wcc_champion.constructor_name
-                }}</span>
-              </div>
-              <div class="champion-team">Constructors' Championship</div>
-              <div v-if="data.wcc_champion.clinched_early" class="clinch-badge">
-                <F1Icon name="sparkles" :size="14" /> Clinched with
-                {{ data.wcc_champion.rounds_to_spare }} round{{
-                  data.wcc_champion.rounds_to_spare > 1 ? "s" : ""
-                }}
-                remaining
-              </div>
-            </div>
-            <div class="champion-stats">
-              <div class="stat-box">
-                <span class="stat-num">{{ data.wcc_champion.points }}</span>
-                <span class="stat-lbl">PTS</span>
-              </div>
-              <div v-if="data.wcc_champion.wins > 0" class="stat-box wins">
-                <span class="stat-num">{{ data.wcc_champion.wins }}</span>
+              <div v-if="card.wins > 0" class="stat-box wins">
+                <span class="stat-num">{{ card.wins }}</span>
                 <span class="stat-lbl">WINS</span>
               </div>
             </div>
@@ -321,7 +312,7 @@ const barWidth = (points, max) => {
         </button>
       </div>
 
-      <!-- Driver Standings -->
+      <!-- Standings -->
       <div
         v-if="
           activeTab === 'drivers' &&
@@ -331,30 +322,34 @@ const barWidth = (points, max) => {
       >
         <p>No driver standings recorded yet for the {{ year }} season.</p>
       </div>
-      <div v-else-if="activeTab === 'drivers'" class="standings-list">
+      <div v-else class="standings-list">
         <div
-          v-for="driver in data.drivers"
-          :key="driver.position"
+          v-for="row in activeStandings"
+          :key="row.position"
           class="standing-row"
           :class="{
-            podium: driver.position <= 3,
-            'pos-gold': driver.position === 1,
-            'pos-silver': driver.position === 2,
-            'pos-bronze': driver.position === 3,
+            podium: row.position <= 3,
+            'pos-gold': row.position === 1,
+            'pos-silver': row.position === 2,
+            'pos-bronze': row.position === 3,
           }"
         >
-          <span class="pos" :class="'pos-' + driver.position">{{
-            driver.position
+          <span class="pos" :class="'pos-' + row.position">{{
+            row.position
           }}</span>
           <span
             class="team-indicator"
-            :style="{ backgroundColor: '#' + driver.team_color }"
+            :style="{ backgroundColor: '#' + row.teamColor }"
           ></span>
           <div class="driver-info">
-            <span class="driver-code">{{ driver.driver_code }}</span>
-            <span class="driver-name">{{ driver.driver_name }}</span>
-            <span class="team-name">{{ driver.team_name }}</span>
-            <span v-if="driver.is_champion" class="champion-tag"
+            <span class="driver-code">{{ row.primaryLabel }}</span>
+            <span v-if="row.driverName" class="driver-name">{{
+              row.driverName
+            }}</span>
+            <span v-if="row.teamName" class="team-name">{{
+              row.teamName
+            }}</span>
+            <span v-if="row.isChampion" class="champion-tag"
               ><F1Icon name="trophy" :size="12" /> CHAMPION</span
             >
           </div>
@@ -362,73 +357,22 @@ const barWidth = (points, max) => {
             <div
               class="points-bar"
               :style="{
-                width: barWidth(driver.points, maxDriverPoints),
-                backgroundColor: '#' + driver.team_color,
+                width: barWidth(row.points, row.maxPoints),
+                backgroundColor: '#' + row.teamColor,
               }"
             ></div>
           </div>
           <div class="points-area">
             <span
-              v-if="driver.position > 1 && driver.gap_to_leader !== undefined"
+              v-if="row.position > 1 && row.gapToLeader !== undefined"
               class="gap-value"
               title="Gap to Leader"
             >
-              -{{ driver.gap_to_leader }}
+              -{{ row.gapToLeader }}
             </span>
-            <span class="points-value">{{ driver.points }}</span>
-            <span class="wins-badge" :class="{ empty: driver.wins <= 0 }">
-              <template v-if="driver.wins > 0">{{ driver.wins }}W</template>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Constructor Standings -->
-      <div v-if="activeTab === 'constructors'" class="standings-list">
-        <div
-          v-for="team in data.constructors"
-          :key="team.position"
-          class="standing-row"
-          :class="{
-            podium: team.position <= 3,
-            'pos-gold': team.position === 1,
-            'pos-silver': team.position === 2,
-            'pos-bronze': team.position === 3,
-          }"
-        >
-          <span class="pos" :class="'pos-' + team.position">{{
-            team.position
-          }}</span>
-          <span
-            class="team-indicator"
-            :style="{ backgroundColor: '#' + team.team_color }"
-          ></span>
-          <div class="driver-info">
-            <span class="driver-code">{{ team.constructor_name }}</span>
-            <span v-if="team.is_champion" class="champion-tag"
-              ><F1Icon name="trophy" :size="12" /> CHAMPION</span
-            >
-          </div>
-          <div class="points-bar-track">
-            <div
-              class="points-bar"
-              :style="{
-                width: barWidth(team.points, maxConstructorPoints),
-                backgroundColor: '#' + team.team_color,
-              }"
-            ></div>
-          </div>
-          <div class="points-area">
-            <span
-              v-if="team.position > 1 && team.gap_to_leader !== undefined"
-              class="gap-value"
-              title="Gap to Leader"
-            >
-              -{{ team.gap_to_leader }}
-            </span>
-            <span class="points-value">{{ team.points }}</span>
-            <span class="wins-badge" :class="{ empty: team.wins <= 0 }">
-              <template v-if="team.wins > 0">{{ team.wins }}W</template>
+            <span class="points-value">{{ row.points }}</span>
+            <span class="wins-badge" :class="{ empty: row.wins <= 0 }">
+              <template v-if="row.wins > 0">{{ row.wins }}W</template>
             </span>
           </div>
         </div>
@@ -751,10 +695,6 @@ const barWidth = (points, max) => {
   gap: 0.5rem;
 }
 
-.header-title .trophy {
-  font-size: 1.4rem;
-}
-
 .header-title h3 {
   margin: 0;
   font-size: 1.15rem;
@@ -826,10 +766,6 @@ const barWidth = (points, max) => {
 .scenarios-btn:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
-}
-
-.btn-icon {
-  font-size: 1rem;
 }
 
 /* World Champions Hero Banner */
@@ -1076,10 +1012,6 @@ const barWidth = (points, max) => {
   background-color: var(--accent-color);
 }
 
-.standing-row.podium {
-  /* Gradient tints below */
-}
-
 /* Position */
 .pos {
   display: flex;
@@ -1276,41 +1208,11 @@ const barWidth = (points, max) => {
 
 .retry-btn {
   margin-top: 1rem;
-  background: var(--primary-color);
-  color: #ffffff;
-  border: none;
-  padding: 0.5rem 1.25rem;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.retry-btn:hover {
-  opacity: 0.9;
 }
 
 .retry-btn:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
-}
-
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .error-state p {
@@ -1380,10 +1282,6 @@ const barWidth = (points, max) => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-}
-
-.modal-icon {
-  font-size: 1.5rem;
 }
 
 .modal-title-texts h4 {
@@ -1517,10 +1415,6 @@ const barWidth = (points, max) => {
   border: 1px solid rgba(255, 215, 0, 0.35);
   border-radius: 8px;
   padding: 1.25rem;
-}
-
-.clinched-icon {
-  font-size: 2rem;
 }
 
 .clinched-card h5 {
@@ -1701,12 +1595,6 @@ const barWidth = (points, max) => {
   border: 1px solid var(--border-color);
   color: var(--text-color);
   margin-top: 0.45rem;
-}
-
-.callout-icon {
-  font-size: 0.95rem;
-  flex-shrink: 0;
-  margin-top: 0.05rem;
 }
 
 /* Challengers List */

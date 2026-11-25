@@ -5,7 +5,6 @@ import pandas as pd
 from ..utils import (
     validate_year,
     error_response,
-    get_historical_team_color,
     format_ergast_driver,
     resolve_team_color,
 )
@@ -18,15 +17,12 @@ schedule_bp = Blueprint("schedule", __name__)
 def get_events():
     year = request.args.get("year", type=int)
     if not year:
-        return (
-            jsonify({"error": "Year parameter is required and must be an integer."}),
-            400,
-        )
+        return error_response("Year parameter is required and must be an integer.", 400)
 
     try:
         schedule = fastf1.get_event_schedule(year=year, include_testing=False)
         if schedule.empty:
-            return jsonify({"error": f"No events found for the year {year}."}), 404
+            return error_response(f"No events found for the year {year}.", 404)
 
         events = []
         for idx, event in schedule.iterrows():
@@ -52,7 +48,7 @@ def get_events():
         return jsonify({"events": events}), 200
     except Exception:
         logger.exception("Error in schedule blueprint")
-        return jsonify({"error": "An internal error occurred."}), 500
+        return error_response("An internal error occurred.", 500)
 
 
 @schedule_bp.route("/sessions", methods=["GET"])
@@ -61,7 +57,7 @@ def get_sessions():
     event_key = request.args.get("event_key", type=str)
 
     if not year or not event_key:
-        return jsonify({"error": "Year and event_key parameters are required."}), 400
+        return error_response("Year and event_key parameters are required.", 400)
 
     try:
         event = fastf1.get_event(year, event_key)
@@ -102,7 +98,7 @@ def get_sessions():
         return jsonify({"sessions": sessions}), 200
     except Exception:
         logger.exception("Error in schedule blueprint")
-        return jsonify({"error": "An internal error occurred."}), 500
+        return error_response("An internal error occurred.", 500)
 
 
 @schedule_bp.route("/drivers", methods=["GET"])
@@ -121,6 +117,7 @@ def get_drivers():
         )
 
     try:
+        drivers = []
         if year < 2018:
             ergast = fastf1.ergast.Ergast()
             event = fastf1.get_event(year, event_key)
@@ -134,7 +131,6 @@ def get_drivers():
             else:
                 res = ergast.get_race_results(season=year, round=event_round)
 
-            drivers = []
             if res.content and not res.content[0].empty:
                 df = res.content[0]
                 for idx, driver_info in df.iterrows():
@@ -146,42 +142,31 @@ def get_drivers():
                     base["driver_key"] = base["abbreviation"]
                     base["position"] = int(driver_info.get("position", idx + 1))
                     drivers.append(base)
-            drivers.sort(
-                key=lambda d: (
-                    d.get("position") is None,
-                    d.get("position") if d.get("position") is not None else 99,
-                    d.get("driver_number", ""),
+        else:
+            session = fastf1.get_session(year, event_key, session_name)
+            session.load(telemetry=False, weather=False, messages=False)
+
+            for driver_number in session.drivers:
+                driver_info = session.get_driver(driver_number)
+                pos_val = driver_info.get("Position")
+                pos = int(pos_val) if pd.notna(pos_val) else None
+                drivers.append(
+                    {
+                        "driver_number": str(driver_number),
+                        "abbreviation": str(driver_info["Abbreviation"]),
+                        "full_name": str(driver_info["FullName"]),
+                        "team": str(driver_info["TeamName"]),
+                        "team_id": (
+                            str(driver_info["TeamId"])
+                            if "TeamId" in driver_info
+                            else None
+                        ),
+                        "team_color": resolve_team_color(driver_info),
+                        "display_name": f"{driver_info['FullName']} ({driver_info['Abbreviation']})",
+                        "driver_key": str(driver_info["Abbreviation"]),
+                        "position": pos,
+                    }
                 )
-            )
-            return jsonify({"drivers": drivers}), 200
-
-        session = fastf1.get_session(year, event_key, session_name)
-        session.load(telemetry=False, weather=False, messages=False)
-
-        drivers = []
-        for driver_number in session.drivers:
-            driver_info = session.get_driver(driver_number)
-            pos_val = (
-                driver_info.get("Position")
-                if hasattr(driver_info, "get")
-                else getattr(driver_info, "Position", None)
-            )
-            pos = int(pos_val) if (pos_val is not None and pd.notna(pos_val)) else None
-            drivers.append(
-                {
-                    "driver_number": str(driver_number),
-                    "abbreviation": str(driver_info["Abbreviation"]),
-                    "full_name": str(driver_info["FullName"]),
-                    "team": str(driver_info["TeamName"]),
-                    "team_id": (
-                        str(driver_info["TeamId"]) if "TeamId" in driver_info else None
-                    ),
-                    "team_color": resolve_team_color(driver_info),
-                    "display_name": f"{driver_info['FullName']} ({driver_info['Abbreviation']})",
-                    "driver_key": str(driver_info["Abbreviation"]),
-                    "position": pos,
-                }
-            )
 
         drivers.sort(
             key=lambda d: (
@@ -194,4 +179,4 @@ def get_drivers():
         return jsonify({"drivers": drivers}), 200
     except Exception:
         logger.exception("Error in schedule blueprint")
-        return jsonify({"error": "An internal error occurred."}), 500
+        return error_response("An internal error occurred.", 500)

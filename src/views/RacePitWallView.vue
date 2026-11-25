@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, shallowRef, computed, nextTick } from "vue";
+import { ref, watch, shallowRef, computed, nextTick } from "vue";
 import { useRoute, RouterLink } from "vue-router";
 import F1Controls from "../components/F1Controls.vue";
 import F1Icon from "../components/F1Icon.vue";
@@ -22,17 +22,11 @@ const props = defineProps({
     type: Number,
     required: true,
   },
-  years: {
-    type: Array,
-    default: () => [],
-  },
   theme: {
     type: String,
     default: "light",
   },
 });
-
-const emit = defineEmits(["update:year"]);
 
 const route = useRoute();
 
@@ -165,8 +159,7 @@ const fetchRaceSummary = async () => {
 const pickDefaultSession = () => {
   if (!sessions.value || sessions.value.length === 0) return "";
 
-  const querySession =
-    route.query.session || route.query.session_name || route.params.session;
+  const querySession = route.query.session;
 
   if (querySession) {
     const queryStr = String(querySession).trim().toLowerCase();
@@ -206,11 +199,7 @@ const syncEventFromQuery = () => {
     route.query.round !== null &&
     route.query.round !== ""
       ? Number(route.query.round)
-      : route.params.round !== undefined &&
-          route.params.round !== null &&
-          route.params.round !== ""
-        ? Number(route.params.round)
-        : null;
+      : null;
 
   if (!targetEvent && (targetRound === null || isNaN(targetRound))) {
     return;
@@ -567,22 +556,6 @@ watch(
   () => {
     fetchEvents();
   },
-);
-
-watch(
-  () => route.query.year,
-  (newYear) => {
-    if (newYear) {
-      const parsed = Number(newYear);
-      if (
-        !isNaN(parsed) &&
-        parsed !== props.year &&
-        (!props.years.length || props.years.includes(parsed))
-      ) {
-        emit("update:year", parsed);
-      }
-    }
-  },
   { immediate: true },
 );
 
@@ -591,10 +564,7 @@ watch(
     route.query.event,
     route.query.round,
     route.query.session,
-    route.query.session_name,
     route.params.event,
-    route.params.round,
-    route.params.session,
   ],
   () => {
     if (events.value.length > 0) {
@@ -638,30 +608,12 @@ watch(viewMode, (newMode) => {
 
 watch([selectedDriver1, selectedDriver2], fetchRaceComparison);
 watch([selectedLap1, selectedLap2], fetchTelemetry);
-
-onMounted(() => {
-  if (route.query.year) {
-    const parsed = Number(route.query.year);
-    if (
-      !isNaN(parsed) &&
-      parsed !== props.year &&
-      (!props.years.length || props.years.includes(parsed))
-    ) {
-      emit("update:year", parsed);
-      return;
-    }
-  }
-  fetchEvents();
-});
 </script>
 
 <template>
   <div class="race-pitwall-view">
     <F1Controls
-      :hideYearSelect="true"
-      :years="years"
       :year="year"
-      @update:year="$emit('update:year', $event)"
       :events="events"
       v-model:selectedEventKey="selectedEventKey"
       :isLoadingEvents="isLoadingEvents"
@@ -739,8 +691,6 @@ onMounted(() => {
       <QualifyingSummary
         v-else-if="isQualifyingSession && summaryData"
         :summaryData="summaryData"
-        :isLoading="isLoadingSummary"
-        :error="summaryError"
         :theme="theme"
         :year="Number(year)"
         @select-lap="handleQuickLapSelect"
@@ -748,8 +698,6 @@ onMounted(() => {
       <RaceSummary
         v-else-if="summaryData"
         :summaryData="summaryData"
-        :isLoading="isLoadingSummary"
-        :error="summaryError"
         :year="Number(year)"
         :sessionName="selectedSessionName"
       />
@@ -779,22 +727,6 @@ onMounted(() => {
   margin: 0;
 }
 
-.spinner {
-  width: 34px;
-  height: 34px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .error-state {
   color: var(--primary-color);
   background: var(--accent-color);
@@ -802,29 +734,8 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.retry-btn {
-  margin-top: 1rem;
-  padding: 0.5rem 1.15rem;
-  border-radius: 6px;
-  border: 1px solid var(--primary-color);
-  background: var(--primary-color);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-
-.retry-btn:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-.retry-btn:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
+.error-state p {
+  margin-bottom: 1rem;
 }
 
 .empty-event-card {

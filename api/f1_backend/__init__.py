@@ -1,4 +1,3 @@
-import flask
 from flask import Flask, jsonify
 from flask_cors import CORS
 import fastf1
@@ -73,12 +72,8 @@ def create_app():
 
         logger.info(f"Setting up FastF1 cache at: {cache_path}")
         os.makedirs(cache_path, exist_ok=True)
-        if hasattr(fastf1.Cache, "configure"):
-            fastf1.Cache.configure(cache_dir=cache_path)
-        else:
-            fastf1.Cache.enable_cache(cache_path)
-        if hasattr(fastf1, "set_auth_method"):
-            fastf1.set_auth_method(os.environ.get("FASTF1_AUTH_METHOD", "password"))
+        fastf1.Cache.configure(cache_dir=cache_path)
+        fastf1.set_auth_method(os.environ.get("FASTF1_AUTH_METHOD", "password"))
         has_creds = bool(
             os.environ.get("F1_USERNAME") and os.environ.get("F1_PASSWORD")
         )
@@ -107,12 +102,15 @@ def create_app():
     try:
         from .blueprints import schedule, telemetry, recap, standings, stats, live
 
-        app.register_blueprint(schedule.schedule_bp, url_prefix="/api")
-        app.register_blueprint(telemetry.telemetry_bp, url_prefix="/api")
-        app.register_blueprint(recap.recap_bp, url_prefix="/api")
-        app.register_blueprint(standings.standings_bp, url_prefix="/api")
-        app.register_blueprint(stats.stats_bp, url_prefix="/api")
-        app.register_blueprint(live.live_bp, url_prefix="/api")
+        for bp in (
+            schedule.schedule_bp,
+            telemetry.telemetry_bp,
+            recap.recap_bp,
+            standings.standings_bp,
+            stats.stats_bp,
+            live.live_bp,
+        ):
+            app.register_blueprint(bp, url_prefix="/api")
         logger.info("Blueprints registered successfully")
     except Exception as e:
         logger.error(f"Failed to register blueprints: {str(e)}")

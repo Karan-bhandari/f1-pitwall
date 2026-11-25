@@ -54,6 +54,34 @@ HISTORICAL_TEAM_COLORS = {
 }
 
 
+def safe_int(val, default=0):
+    """Safely convert a value to int, handling NaN, strings, and None."""
+    try:
+        return default if pd.isna(val) else int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(val, default=0.0):
+    """Safely convert a value to float, handling NaN and None."""
+    try:
+        return default if pd.isna(val) else float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def first_str(val, default=""):
+    """Extract first string element from a list or scalar value."""
+    try:
+        if isinstance(val, list):
+            return str(val[0]) if val else default
+        if val is not None and pd.notna(val):
+            return str(val)
+    except (TypeError, IndexError):
+        pass
+    return default
+
+
 def get_historical_team_color(constructor_id):
     if not constructor_id or pd.isna(constructor_id):
         return "777777"
@@ -100,6 +128,40 @@ def safe_get_laps(session):
     return None
 
 
+def get_fastest_lap_driver(laps):
+    """Return driver abbreviation for the session's fastest lap, if available."""
+    if laps is None or laps.empty:
+        return None
+    try:
+        fastest = laps.pick_fastest()
+        if fastest is not None and pd.notna(fastest.get("Driver")):
+            return str(fastest["Driver"])
+    except Exception:
+        pass
+    return None
+
+
+def parse_grid_and_delta(driver_row, pos):
+    """Extract starting grid position (>0) and positions gained relative to finish pos."""
+    grid_val = driver_row.get("GridPosition")
+    if pd.isna(grid_val):
+        grid_val = driver_row.get("grid")
+    grid_pos = int(grid_val) if pd.notna(grid_val) and int(grid_val) > 0 else None
+    positions_gained = (grid_pos - pos) if grid_pos is not None else None
+    return grid_pos, positions_gained
+
+
+def format_finish_time(raw_time, pos, status_category):
+    """Format winner total race time or classified finisher gap."""
+    if status_category != "finished" or pd.isna(raw_time):
+        return None
+    if hasattr(raw_time, "total_seconds"):
+        if pos > 1 and raw_time.total_seconds() < 180:
+            return f"+{raw_time.total_seconds():.3f}s"
+        return format_timedelta(raw_time)
+    return str(raw_time)
+
+
 def validate_year(year):
     """Validate that the year is within the supported FastF1/Ergast range."""
     current_year = datetime.now().year
@@ -128,11 +190,7 @@ def format_timedelta(td):
 
 
 def format_ergast_driver(driver_row):
-    """Format a single Ergast result row into a standardized driver dict.
-
-    Used across schedule, recap, and telemetry blueprints to avoid
-    duplicating the same field-mapping logic for historical (pre-2018) data.
-    """
+    """Format a single Ergast result row into a standardized driver dict."""
     abbrev = (
         str(driver_row.get("driverCode"))
         if pd.notna(driver_row.get("driverCode"))
@@ -149,64 +207,51 @@ def format_ergast_driver(driver_row):
 
 
 def extract_driver_penalties(session, driver_number, abbreviation):
-    """Safely extracts steward penalties and official track warnings for a driver
-
-    from session.race_control_messages.
-    """
+    """Extract steward penalties and official track warnings for a driver."""
     rcm = getattr(session, "race_control_messages", None)
     if rcm is None or (hasattr(rcm, "empty") and rcm.empty):
         return []
 
     target_num_str = str(driver_number).strip()
     target_abbr = str(abbreviation or "").strip()
-    detected = []
+    patterns = [
+        p
+        for cond, p in (
+            (target_num_str, rf"\bCAR\s+{re.escape(target_num_str)}\b"),
+            (target_abbr, rf"\({re.escape(target_abbr)}\)"),
+        )
+        if cond
+    ]
+    driver_re = re.compile("|".join(patterns), re.IGNORECASE) if patterns else None
+    penalties = {}
 
-    # Iterate over messages
     for _, row in rcm.iterrows():
         msg = str(row.get("Message", "") or "").strip()
         if not msg:
             continue
 
         msg_upper = msg.upper()
-        # Skip informational, administrative, and penalty-served messages
         if any(
             skip in msg_upper
-            for skip in [
+            for skip in (
                 "PENALTY SERVED",
                 "NO FURTHER ACTION",
                 "NOTED",
                 "NO INVESTIGATION",
-            ]
+            )
         ):
             continue
 
-        # Match driver by RacingNumber or regex on CAR <number> / (<abbrev>)
         racing_num_val = row.get("RacingNumber")
         racing_num_match = False
         if pd.notna(racing_num_val):
-            clean_rn = str(racing_num_val).strip()
-            if clean_rn.endswith(".0"):
-                clean_rn = clean_rn[:-2]
-            if clean_rn == target_num_str:
-                racing_num_match = True
+            clean_rn = str(racing_num_val).strip().removesuffix(".0")
+            racing_num_match = clean_rn == target_num_str
 
-        regex_match = False
-        if target_num_str or target_abbr:
-            patterns = []
-            if target_num_str:
-                patterns.append(rf"\bCAR\s+{re.escape(target_num_str)}\b")
-            if target_abbr:
-                patterns.append(rf"\({re.escape(target_abbr)}\)")
-            if patterns:
-                pattern = "|".join(patterns)
-                regex_match = bool(re.search(pattern, msg, re.IGNORECASE))
-
-        if not (racing_num_match or regex_match):
+        if not (racing_num_match or (driver_re and driver_re.search(msg))):
             continue
 
-        msg_upper = msg.upper()
         badge = None
-
         time_match = re.search(r"(\d+)\s*SECOND\s+TIME\s+PENALTY", msg_upper)
         if time_match:
             badge = f"+{time_match.group(1)}s"
@@ -218,48 +263,22 @@ def extract_driver_penalties(session, driver_number, abbreviation):
             badge = "DSQ"
         elif "BLACK AND WHITE FLAG" in msg_upper:
             badge = "B&W Flag"
-        elif (
-            "DROP OF" in msg_upper
-            or "GRID PENALTY" in msg_upper
-            or "GRID PLACE PENALTY" in msg_upper
+        elif any(
+            k in msg_upper for k in ("DROP OF", "GRID PENALTY", "GRID PLACE PENALTY")
         ):
             badge = "Grid Pen"
 
         if not badge:
             continue
 
-        reason = None
-        if "-" in msg:
-            candidate_reason = msg.split("-", 1)[1].strip()
-            if candidate_reason:
-                reason = candidate_reason
-
-        lap = None
-        if "Lap" in row and pd.notna(row["Lap"]):
-            try:
-                lap = int(row["Lap"])
-            except (ValueError, TypeError):
-                lap = None
-
-        detected.append(
-            {
-                "badge": badge,
-                "reason": reason,
-                "message": msg,
-                "lap": lap,
-            }
+        reason = msg.split("-", 1)[1].strip() or None if "-" in msg else None
+        lap = safe_int(row.get("Lap"), None) if "Lap" in row else None
+        penalties.setdefault(
+            (badge, reason),
+            {"badge": badge, "reason": reason, "message": msg, "lap": lap},
         )
 
-    # Deduplicate by (badge, reason) while preserving order
-    seen = set()
-    penalties = []
-    for item in detected:
-        key = (item["badge"], item["reason"])
-        if key not in seen:
-            seen.add(key)
-            penalties.append(item)
-
-    return penalties
+    return list(penalties.values())
 
 
 def format_driver_status_detail(
@@ -278,29 +297,30 @@ def format_driver_status_detail(
             val = driver_row.get(field)
             if val is not None and pd.notna(val):
                 return val
-        if hasattr(driver_row, field):
-            val = getattr(driver_row, field)
-            if val is not None and pd.notna(val):
-                return val
         return None
 
     raw_status = _get("Status") or _get("status") or ""
     status = str(raw_status).strip()
     status_lower = status.lower()
 
-    classified_pos = _get("ClassifiedPosition")
-    if classified_pos is None:
-        classified_pos = _get("classifiedPosition")
-    if classified_pos is None:
-        classified_pos = _get("Position")
-    if classified_pos is None:
-        classified_pos = _get("position")
-
-    has_dsq_penalty = any(
-        isinstance(p, dict) and p.get("badge") == "DSQ" for p in (penalties or [])
+    classified_pos = next(
+        (
+            v
+            for f in (
+                "ClassifiedPosition",
+                "classifiedPosition",
+                "Position",
+                "position",
+            )
+            if (v := _get(f)) is not None
+        ),
+        None,
     )
 
-    # Determine status_category
+    has_dsq_penalty = any(
+        isinstance(p, dict) and p.get("badge") == "DSQ" for p in (penalties or ())
+    )
+
     if (
         "disqualified" in status_lower
         or str(classified_pos).strip().upper() == "D"
@@ -321,36 +341,23 @@ def format_driver_status_detail(
     else:
         status_category = "dnf"
 
-    # Determine status_badge
-    if status_category == "finished":
-        status_badge = "FIN"
-    elif status_category == "lapped":
-        status_badge = (
-            status
-            if status.startswith("+")
-            else ("+1 Lap" if "lap" in status_lower else "Lapped")
-        )
-    elif status_category == "dnf":
-        status_badge = "DNF"
-    elif status_category == "dns":
-        status_badge = "DNS"
-    elif status_category == "dsq":
-        status_badge = "DSQ"
+    if status_category == "lapped":
+        status_badge = status if status.startswith("+") else "+1 Lap"
     else:
-        status_badge = "DNF"
+        status_badge = {"finished": "FIN", "dns": "DNS", "dsq": "DSQ"}.get(
+            status_category, "DNF"
+        )
 
-    # Determine status_detail
     if status_category == "dsq":
-        dsq_reason = None
-        if penalties:
-            for p in penalties:
-                if isinstance(p, dict) and p.get("badge") == "DSQ" and p.get("reason"):
-                    dsq_reason = p["reason"]
-                    break
-        if dsq_reason:
-            status_detail = f"DSQ — {dsq_reason}"
-        else:
-            status_detail = "Disqualified"
+        dsq_reason = next(
+            (
+                p["reason"]
+                for p in (penalties or ())
+                if isinstance(p, dict) and p.get("badge") == "DSQ" and p.get("reason")
+            ),
+            None,
+        )
+        status_detail = f"DSQ — {dsq_reason}" if dsq_reason else "Disqualified"
     elif status_category == "dns":
         if "withdrawn" in status_lower:
             status_detail = "Withdrawn"
@@ -361,31 +368,17 @@ def format_driver_status_detail(
     elif status_category == "finished":
         status_detail = "Finished"
     elif status_category == "lapped":
-        status_detail = (
-            status
-            if (status.startswith("+") or "lap" in status_lower)
-            else f"+{status}"
-        )
+        status_detail = status
     else:
-        # status_category == "dnf"
         lap_info = ""
-        if completed_laps is not None and pd.notna(completed_laps):
-            try:
-                c_laps = int(completed_laps)
-                if c_laps > 0:
-                    if total_laps and int(total_laps) > 0:
-                        lap_info = f" (Lap {c_laps}/{int(total_laps)})"
-                    else:
-                        lap_info = f" (Lap {c_laps})"
-            except (ValueError, TypeError):
-                pass
+        c_laps = safe_int(completed_laps, 0)
+        t_laps = safe_int(total_laps, 0)
+        if c_laps > 0:
+            lap_info = f" (Lap {c_laps}/{t_laps})" if t_laps > 0 else f" (Lap {c_laps})"
 
-        is_classified = False
-        if classified_pos is not None and pd.notna(classified_pos):
-            pos_str = str(classified_pos).strip()
-            if pos_str.isdigit():
-                is_classified = True
-
+        is_classified = (
+            classified_pos is not None and str(classified_pos).strip().isdigit()
+        )
         if is_classified:
             status_detail = f"Classified DNF{lap_info}"
         elif status_lower in ("retired", "dnf", ""):

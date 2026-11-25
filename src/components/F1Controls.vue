@@ -5,7 +5,6 @@ import PitwallSelect from "./PitwallSelect.vue";
 
 const props = defineProps({
   // Data for dropdowns
-  years: Array,
   events: Array,
   sessions: Array,
   drivers: Array,
@@ -30,14 +29,9 @@ const props = defineProps({
   driversError: String,
   isLoadingComparison: Boolean,
   viewMode: String,
-  hideYearSelect: {
-    type: Boolean,
-    default: false,
-  },
 });
 
 defineEmits([
-  "update:year",
   "update:selectedEventKey",
   "update:selectedSessionName",
   "update:selectedDriver1",
@@ -47,10 +41,6 @@ defineEmits([
   "update:viewMode",
   "select-preset",
 ]);
-
-const yearOptions = computed(() =>
-  (props.years || []).map((y) => ({ value: y, label: String(y) })),
-);
 
 const eventOptions = computed(() =>
   (props.events || []).map((ev, idx) => {
@@ -104,22 +94,40 @@ const buildLapOptions = (laps) =>
 
 const lap1Options = computed(() => buildLapOptions(props.lapsDriver1));
 const lap2Options = computed(() => buildLapOptions(props.lapsDriver2));
+
+const driverSlots = computed(() => [
+  {
+    key: "d1",
+    driverId: "driver1-select",
+    driverLabel: "Driver 1:",
+    driverValue: props.selectedDriver1,
+    driverOptions: driver1Options.value,
+    driverPlaceholder: "Select Driver 1",
+    driverEvent: "update:selectedDriver1",
+    lapId: "lap1-select",
+    lapLabel: "Select Lap (Driver 1):",
+    lapValue: props.selectedLap1,
+    lapOptions: lap1Options.value,
+    lapEvent: "update:selectedLap1",
+  },
+  {
+    key: "d2",
+    driverId: "driver2-select",
+    driverLabel: "Compare Driver 2 (Optional):",
+    driverValue: props.selectedDriver2,
+    driverOptions: driver2Options.value,
+    driverPlaceholder: "None (Single Driver)",
+    driverEvent: "update:selectedDriver2",
+    lapId: "lap2-select",
+    lapLabel: "Select Lap (Driver 2):",
+    lapValue: props.selectedLap2,
+    lapOptions: lap2Options.value,
+    lapEvent: "update:selectedLap2",
+  },
+]);
 </script>
 
 <template>
-  <div v-if="!hideYearSelect" class="form-group">
-    <label for="year-select">Year:</label>
-    <PitwallSelect
-      id="year-select"
-      :modelValue="year"
-      :options="yearOptions"
-      placeholder="Select Year"
-      searchPlaceholder="Jump to year..."
-      monoValue
-      @update:modelValue="$emit('update:year', $event)"
-    />
-  </div>
-
   <p v-if="isLoadingEvents" class="loading-text">Loading events...</p>
   <p v-if="eventsError" class="error-text">{{ eventsError }}</p>
   <div v-if="!isLoadingEvents && events.length > 0" class="form-group">
@@ -211,56 +219,29 @@ const lap2Options = computed(() => buildLapOptions(props.lapsDriver2));
     </div>
 
     <div class="driver-controls">
-      <div class="driver-group">
+      <div v-for="slot in driverSlots" :key="slot.key" class="driver-group">
         <div class="form-group">
-          <label for="driver1-select">Driver 1:</label>
+          <label :for="slot.driverId">{{ slot.driverLabel }}</label>
           <PitwallSelect
-            id="driver1-select"
-            :modelValue="selectedDriver1"
-            :options="driver1Options"
-            placeholder="Select Driver 1"
+            :id="slot.driverId"
+            :modelValue="slot.driverValue"
+            :options="slot.driverOptions"
+            :placeholder="slot.driverPlaceholder"
             searchPlaceholder="Filter driver or team..."
-            @update:modelValue="$emit('update:selectedDriver1', $event)"
+            @update:modelValue="$emit(slot.driverEvent, $event)"
           />
         </div>
-        <div class="form-group" v-if="selectedDriver1">
-          <label for="lap1-select">Select Lap (Driver 1):</label>
+        <div class="form-group" v-if="slot.driverValue">
+          <label :for="slot.lapId">{{ slot.lapLabel }}</label>
           <PitwallSelect
-            id="lap1-select"
-            :modelValue="selectedLap1"
-            :options="lap1Options"
+            :id="slot.lapId"
+            :modelValue="slot.lapValue"
+            :options="slot.lapOptions"
             placeholder="Select Lap"
             searchPlaceholder="Jump to lap (e.g. 14)..."
             :disabled="isLoadingComparison"
             monoValue
-            @update:modelValue="$emit('update:selectedLap1', $event)"
-          />
-        </div>
-      </div>
-
-      <div class="driver-group">
-        <div class="form-group">
-          <label for="driver2-select">Compare Driver 2 (Optional):</label>
-          <PitwallSelect
-            id="driver2-select"
-            :modelValue="selectedDriver2"
-            :options="driver2Options"
-            placeholder="None (Single Driver)"
-            searchPlaceholder="Filter driver or team..."
-            @update:modelValue="$emit('update:selectedDriver2', $event)"
-          />
-        </div>
-        <div class="form-group" v-if="selectedDriver2">
-          <label for="lap2-select">Select Lap (Driver 2):</label>
-          <PitwallSelect
-            id="lap2-select"
-            :modelValue="selectedLap2"
-            :options="lap2Options"
-            placeholder="Select Lap"
-            searchPlaceholder="Jump to lap (e.g. 14)..."
-            :disabled="isLoadingComparison"
-            monoValue
-            @update:modelValue="$emit('update:selectedLap2', $event)"
+            @update:modelValue="$emit(slot.lapEvent, $event)"
           />
         </div>
       </div>

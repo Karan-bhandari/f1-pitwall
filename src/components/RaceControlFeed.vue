@@ -57,7 +57,7 @@ const filteredMessages = computed(() => {
       const msg = (m.message || "").toUpperCase();
       return (
         cat === "other" ||
-        cat === "carEvent".toLowerCase() ||
+        cat === "carevent" ||
         msg.includes("INCIDENT") ||
         msg.includes("INVESTIGAT") ||
         msg.includes("PENALTY") ||
@@ -114,31 +114,19 @@ const getBadge = (msg) => {
         aria-label="Filter Race Control Messages"
       >
         <button
+          v-for="[key, label] in [
+            ['all', 'All'],
+            ['flags', 'Flags / SC'],
+            ['incidents', 'Incidents'],
+          ]"
+          :key="key"
           type="button"
           class="filter-chip"
-          :class="{ active: activeFilter === 'all' }"
-          :aria-pressed="activeFilter === 'all'"
-          @click="activeFilter = 'all'"
+          :class="{ active: activeFilter === key }"
+          :aria-pressed="activeFilter === key"
+          @click="activeFilter = key"
         >
-          All
-        </button>
-        <button
-          type="button"
-          class="filter-chip"
-          :class="{ active: activeFilter === 'flags' }"
-          :aria-pressed="activeFilter === 'flags'"
-          @click="activeFilter = 'flags'"
-        >
-          Flags / SC
-        </button>
-        <button
-          type="button"
-          class="filter-chip"
-          :class="{ active: activeFilter === 'incidents' }"
-          :aria-pressed="activeFilter === 'incidents'"
-          @click="activeFilter = 'incidents'"
-        >
-          Incidents
+          {{ label }}
         </button>
       </div>
     </div>

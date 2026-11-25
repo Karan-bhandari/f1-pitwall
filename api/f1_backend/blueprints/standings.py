@@ -5,29 +5,16 @@ import traceback
 from flask import Blueprint, request, jsonify
 import fastf1
 import pandas as pd
-from ..utils import validate_year, error_response, get_historical_team_color
+from ..utils import (
+    validate_year,
+    error_response,
+    get_historical_team_color,
+    safe_int as _safe_int,
+    safe_float as _safe_float,
+    first_str,
+)
 
 standings_bp = Blueprint("standings", __name__)
-
-
-def _safe_int(val, default=0):
-    """Safely convert a value to int, handling NaN and None."""
-    try:
-        if pd.isna(val):
-            return default
-        return int(val)
-    except (ValueError, TypeError):
-        return default
-
-
-def _safe_float(val, default=0.0):
-    """Safely convert a value to float, handling NaN and None."""
-    try:
-        if pd.isna(val):
-            return default
-        return float(val)
-    except (ValueError, TypeError):
-        return default
 
 
 def calculate_schedule_progress(year, ds_round, current_year=None, schedule=None):
@@ -77,10 +64,13 @@ def calculate_schedule_progress(year, ds_round, current_year=None, schedule=None
             and "EventFormat" in schedule.columns
         ):
             upcoming = schedule[schedule["RoundNumber"] > completed_rounds]
-            for _, row in upcoming.iterrows():
-                fmt = str(row.get("EventFormat", "")).lower()
-                if "sprint" in fmt:
-                    remaining_sprints += 1
+            remaining_sprints = int(
+                upcoming["EventFormat"]
+                .astype(str)
+                .str.lower()
+                .str.contains("sprint", na=False)
+                .sum()
+            )
 
             if remaining_rounds > 0:
                 next_event = schedule[schedule["RoundNumber"] == completed_rounds + 1]
@@ -187,6 +177,7 @@ def enrich_standings(standings, max_remaining_points, remaining_rounds):
                 else:
                     entry["mathematically_eligible"] = False
 
+        entry["is_champion"] = False
         enriched.append(entry)
 
     # is_champion: True for P1 iff len(standings) > 0 and
@@ -198,11 +189,8 @@ def enrich_standings(standings, max_remaining_points, remaining_rounds):
         remaining_rounds == 0 or not has_other_eligible
     )
 
-    for i, entry in enumerate(enriched):
-        if (entry.get("position", i + 1) == 1 or i == 0) and p1_is_champion:
-            entry["is_champion"] = True
-        else:
-            entry["is_champion"] = False
+    if enriched:
+        enriched[0]["is_champion"] = p1_is_champion
 
     return enriched
 
@@ -495,31 +483,8 @@ def get_standings():
             ds_round = int(ds_res.description["round"].iloc[0])
 
             for _, row in df.iterrows():
-                constructor_names = row.get("constructorNames")
-                constructor_ids = row.get("constructorIds")
-
-                try:
-                    if (
-                        isinstance(constructor_names, list)
-                        and len(constructor_names) > 0
-                    ):
-                        team_name = str(constructor_names[0])
-                    elif pd.notna(constructor_names):
-                        team_name = str(constructor_names)
-                    else:
-                        team_name = "Unknown"
-                except (TypeError, IndexError):
-                    team_name = "Unknown"
-
-                try:
-                    if isinstance(constructor_ids, list) and len(constructor_ids) > 0:
-                        team_id = str(constructor_ids[0])
-                    elif pd.notna(constructor_ids):
-                        team_id = str(constructor_ids)
-                    else:
-                        team_id = ""
-                except (TypeError, IndexError):
-                    team_id = ""
+                team_name = first_str(row.get("constructorNames"), "Unknown")
+                team_id = first_str(row.get("constructorIds"), "")
 
                 driver_standings_data.append(
                     {

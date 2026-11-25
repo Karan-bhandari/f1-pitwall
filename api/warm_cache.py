@@ -37,14 +37,7 @@ CACHE_DIR = os.path.abspath(os.path.join(API_DIR, "instance", "fastf1_cache"))
 def _quiet_loggers():
     """Silence noisy urllib3/requests_cache/fastf1 debug & info logs so only progress prints."""
     fastf1.set_log_level("ERROR")
-    root = logging.getLogger()
-    root.setLevel(logging.ERROR)
-    for h in root.handlers:
-        h.setLevel(logging.ERROR)
-    for name in list(logging.root.manager.loggerDict.keys()):
-        lg = logging.getLogger(name)
-        lg.setLevel(logging.ERROR)
-        lg.propagate = False
+    logging.disable(logging.WARNING)
 
 
 def _session_is_cached(session) -> bool:
@@ -204,12 +197,7 @@ def main():
             if args.force:
                 cmd.append("--force")
 
-            env = os.environ.copy()
-            env["PYTHONPATH"] = (
-                f"{API_DIR}:{env['PYTHONPATH']}" if "PYTHONPATH" in env else API_DIR
-            )
-
-            subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL, check=False)
+            subprocess.run(cmd, stdin=subprocess.DEVNULL, check=False)
             cur = b_end + 1
 
     print(

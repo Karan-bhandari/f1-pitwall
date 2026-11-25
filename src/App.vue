@@ -32,7 +32,6 @@ const theme = ref("light");
 const toggleTheme = () => {
   theme.value = theme.value === "light" ? "dark" : "light";
   localStorage.setItem("f1_pitwall_theme", theme.value);
-  document.documentElement.setAttribute("data-theme", theme.value);
 };
 
 // --- Season State ---
@@ -56,9 +55,13 @@ watch(
   { immediate: true },
 );
 
-watch(theme, (newTheme) => {
-  document.documentElement.setAttribute("data-theme", newTheme);
-});
+watch(
+  theme,
+  (newTheme) => {
+    document.documentElement.setAttribute("data-theme", newTheme);
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   const savedTheme = localStorage.getItem("f1_pitwall_theme");
@@ -70,11 +73,9 @@ onMounted(() => {
     mediaQuery.addEventListener("change", (e) => {
       if (!localStorage.getItem("f1_pitwall_theme")) {
         theme.value = e.matches ? "dark" : "light";
-        document.documentElement.setAttribute("data-theme", theme.value);
       }
     });
   }
-  document.documentElement.setAttribute("data-theme", theme.value);
   refreshLiveBadge();
   liveStatusTimer = setInterval(refreshLiveBadge, 60000);
   document.addEventListener("visibilitychange", handleVisibilityForBadge);
@@ -177,24 +178,13 @@ onUnmounted(() => {
     <!-- Page Content View -->
     <main class="app-main">
       <RouterView v-slot="{ Component }">
-        <component
-          :is="Component"
-          :year="Number(year)"
-          :years="years"
-          :theme="theme"
-          @update:year="(val) => (year = Number(val))"
-        />
+        <component :is="Component" :year="Number(year)" :theme="theme" />
       </RouterView>
     </main>
   </div>
 </template>
 
 <style>
-.mono {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
 body {
   padding: 1.5rem;
 }
@@ -239,13 +229,8 @@ body {
   padding: 0.15rem 0.25rem;
   margin: -0.15rem -0.25rem;
   border-radius: 6px;
-  background-color: transparent;
   display: inline-flex;
   align-items: center;
-}
-
-.brand-link:hover {
-  background-color: transparent;
 }
 
 .brand-title {

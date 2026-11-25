@@ -267,12 +267,12 @@ const isPracticeType = (name) => {
 
                         <div
                           v-if="driver.penalties && driver.penalties.length > 0"
-                          class="steward-pills-row steward-pills-stack"
+                          class="steward-pills-stack"
                         >
                           <span
                             v-for="(p, pIdx) in driver.penalties"
                             :key="pIdx"
-                            class="steward-pill penalty-chip"
+                            class="steward-pill"
                             :class="
                               p.badge === 'B&W Flag'
                                 ? 'is-bw-flag'
@@ -574,25 +574,6 @@ const isPracticeType = (name) => {
   margin: 0 0 1rem;
 }
 
-.retry-btn {
-  padding: 0.55rem 1.25rem;
-  border-radius: 6px;
-  border: 1px solid var(--primary-color);
-  background: var(--primary-color);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-
-.retry-btn:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
 .recap-grid {
   display: grid;
   grid-template-columns: 1fr 340px;
@@ -675,60 +656,8 @@ td {
   text-align: right;
 }
 
-.pos-delta {
-  min-width: 34px;
-  text-align: center;
-  font-size: 0.7rem;
-  font-weight: 800;
-  padding: 1px 4px;
-  border-radius: 4px;
-  line-height: 1.2;
-}
-
-.pos-delta.gain {
-  color: #15803d;
-  background: rgba(21, 128, 61, 0.14);
-}
-
-:global(html[data-theme="dark"]) .pos-delta.gain {
-  color: #4ade80;
-  background: rgba(74, 222, 128, 0.14);
-}
-
-.pos-delta.loss {
-  color: #d9261c;
-  background: rgba(217, 38, 28, 0.12);
-}
-
-:global(html[data-theme="dark"]) .pos-delta.loss {
-  color: #ff4d42;
-  background: rgba(255, 59, 48, 0.16);
-}
-
-.pos-delta.even {
-  color: var(--muted-text-color);
-  background: rgba(128, 128, 128, 0.12);
-}
-
 .fl-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(147, 51, 234, 0.14);
-  color: #7e22ce;
-  border: 1px solid rgba(147, 51, 234, 0.35);
-  line-height: 1.2;
   margin-left: 4px;
-}
-
-:global(html[data-theme="dark"]) .fl-pill {
-  background: rgba(179, 90, 209, 0.2);
-  color: #d48ef0;
-  border-color: rgba(179, 90, 209, 0.4);
 }
 
 .status-cell-stack {
@@ -737,79 +666,11 @@ td {
   gap: 5px;
 }
 
-.steward-pills-row,
-.steward-pills-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  width: 100%;
-}
-
-.steward-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 5px;
-  cursor: help;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.steward-pill.is-penalty {
-  background: rgba(217, 119, 6, 0.14);
-  color: #b45309;
-  border: 1px solid rgba(217, 119, 6, 0.38);
-}
-
-:global(html[data-theme="dark"]) .steward-pill.is-penalty {
-  background: rgba(245, 158, 11, 0.16);
-  color: #fbbf24;
-  border-color: rgba(245, 158, 11, 0.4);
-}
-
-.steward-pill.is-bw-flag {
-  background: var(--item-bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-
 .status-retired {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.status-badge {
-  font-size: 0.7rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-  font-family: "JetBrains Mono", monospace;
-  line-height: 1.2;
-}
-
-.status-dnf {
-  background: rgba(235, 59, 53, 0.2);
-  color: #eb3b35;
-  border: 1px solid rgba(235, 59, 53, 0.4);
-}
-
-.status-dns {
-  background: rgba(142, 142, 147, 0.2);
-  color: #8e8e93;
-  border: 1px solid rgba(142, 142, 147, 0.4);
-}
-
-.status-dsq {
-  background: rgba(175, 82, 222, 0.2);
-  color: #af52de;
-  border: 1px solid rgba(175, 82, 222, 0.4);
 }
 
 .status-detail-text {
@@ -822,22 +683,6 @@ td {
   font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-}
-
-.pts-pill {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(21, 128, 61, 0.14);
-  color: #15803d;
-}
-
-:global(html[data-theme="dark"]) .pts-pill {
-  background: rgba(74, 222, 128, 0.16);
-  color: #4ade80;
 }
 
 .pts-zero {
@@ -1062,22 +907,6 @@ td {
 .loading-state {
   text-align: center;
   padding: 5rem;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1.5rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 1100px) {

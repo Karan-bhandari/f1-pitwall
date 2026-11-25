@@ -1,22 +1,29 @@
 from flask import Blueprint, request, jsonify
 import fastf1
 import pandas as pd
-import numpy as np
 import sys
 import traceback
 from ..utils import (
     validate_year,
     error_response,
     format_timedelta,
-    get_historical_team_color,
     format_ergast_driver,
     resolve_team_color,
+    safe_float,
     safe_get_laps as _safe_get_laps,
+    get_fastest_lap_driver,
+    parse_grid_and_delta,
+    format_finish_time,
     extract_driver_penalties,
     format_driver_status_detail,
 )
 
 recap_bp = Blueprint("recap", __name__)
+
+
+def _first_valid_time(row, cols=("Q3", "Q2", "Q1", "BestLapTime")):
+    """Return the first non-null time value across candidate columns."""
+    return next((row.get(c) for c in cols if c in row and pd.notna(row.get(c))), None)
 
 
 def _get_historical_weekend_summary(year, event, event_name):
@@ -42,7 +49,6 @@ def _get_historical_weekend_summary(year, event, event_name):
                 "session_date": None,
                 "results": [],
                 "insights": {
-                    "track": {"weather": "N/A", "air_temp": None, "track_temp": None},
                     "incidents": [],
                 },
             }
@@ -50,17 +56,10 @@ def _get_historical_weekend_summary(year, event, event_name):
             for idx, driver in df.iterrows():
                 pos = int(driver.get("position", idx + 1))
                 base = format_ergast_driver(driver)
-                race_best = driver.get("fastestLapTime")
-                if pd.isna(race_best):
-                    race_best = driver.get("totalRaceTime")
-                if pd.isna(race_best):
-                    race_best = driver.get("Time")
-                grid_pos = (
-                    int(driver.get("grid"))
-                    if pd.notna(driver.get("grid")) and int(driver.get("grid")) > 0
-                    else None
+                race_best = _first_valid_time(
+                    driver, ("fastestLapTime", "totalRaceTime", "Time")
                 )
-                positions_gained = (grid_pos - pos) if grid_pos is not None else None
+                grid_pos, positions_gained = parse_grid_and_delta(driver, pos)
                 c_laps = (
                     int(driver.get("laps")) if pd.notna(driver.get("laps")) else None
                 )
@@ -70,21 +69,10 @@ def _get_historical_weekend_summary(year, event, event_name):
                     total_laps=0,
                     penalties=[],
                 )
-                time_val = driver.get("totalRaceTime")
-                if pd.isna(time_val):
-                    time_val = driver.get("Time")
-                finish_time = None
-                if status_info["status_category"] == "finished" and pd.notna(time_val):
-                    if hasattr(time_val, "total_seconds"):
-                        if pos == 1:
-                            finish_time = format_timedelta(time_val)
-                        else:
-                            if time_val.total_seconds() < 180:
-                                finish_time = f"+{time_val.total_seconds():.3f}s"
-                            else:
-                                finish_time = format_timedelta(time_val)
-                    else:
-                        finish_time = str(time_val)
+                time_val = _first_valid_time(driver, ("totalRaceTime", "Time"))
+                finish_time = format_finish_time(
+                    time_val, pos, status_info["status_category"]
+                )
 
                 rank_val = (
                     driver.get("rank")
@@ -104,11 +92,7 @@ def _get_historical_weekend_summary(year, event, event_name):
                     "positions_gained": positions_gained,
                     "finish_time": finish_time,
                     "has_fastest_lap": has_fl,
-                    "points": (
-                        int(float(driver.get("points", 0)))
-                        if pd.notna(driver.get("points"))
-                        else 0
-                    ),
+                    "points": int(safe_float(driver.get("points"))),
                     "grid_pos": grid_pos,
                     "best_time": (
                         safe_format_td(race_best) if pd.notna(race_best) else None
@@ -140,27 +124,18 @@ def _get_historical_weekend_summary(year, event, event_name):
                 "session_date": None,
                 "results": [],
                 "insights": {
-                    "track": {"weather": "N/A", "air_temp": None, "track_temp": None},
                     "incidents": [],
                 },
             }
             if not df.empty:
-                q_best = df.iloc[0].get("Q3")
-                if pd.isna(q_best) and "Q2" in df.columns:
-                    q_best = df.iloc[0].get("Q2")
-                if pd.isna(q_best) and "Q1" in df.columns:
-                    q_best = df.iloc[0].get("Q1")
+                q_best = _first_valid_time(df.iloc[0], ("Q3", "Q2", "Q1"))
                 summary["insights"]["pole"] = {
                     "full_name": f"{df.iloc[0].get('givenName', '')} {df.iloc[0].get('familyName', '')}".strip(),
                     "time": safe_format_td(q_best),
                 }
             for idx, driver in df.iterrows():
                 pos = int(driver.get("position", idx + 1))
-                q_best = driver.get("Q3") if "Q3" in df.columns else None
-                if pd.isna(q_best) and "Q2" in df.columns:
-                    q_best = driver.get("Q2")
-                if pd.isna(q_best) and "Q1" in df.columns:
-                    q_best = driver.get("Q1")
+                q_best = _first_valid_time(driver, ("Q3", "Q2", "Q1"))
                 base = format_ergast_driver(driver)
                 entry = {
                     **base,
@@ -227,7 +202,6 @@ def _extract_session_insights(session, results, s_name):
     """Helper to aggregate session-specific highlight data."""
     lname = s_name.lower()
     insights = {
-        "track": {"weather": "N/A", "air_temp": None, "track_temp": None},
         "incidents": _get_track_status_incidents(session),
     }
 
@@ -281,13 +255,7 @@ def _extract_session_insights(session, results, s_name):
             if results is not None and not results.empty:
                 # Fallback for pole time: Q3 -> Q2 -> Q1 -> BestLapTime
                 pole_driver = results.iloc[0]
-                pole_time = pole_driver.get("Q3")
-                if pd.isna(pole_time):
-                    pole_time = pole_driver.get("Q2")
-                if pd.isna(pole_time):
-                    pole_time = pole_driver.get("Q1")
-                if pd.isna(pole_time):
-                    pole_time = pole_driver.get("BestLapTime")
+                pole_time = _first_valid_time(pole_driver)
 
                 insights["pole"] = {
                     "full_name": str(pole_driver.get("FullName", "N/A")),
@@ -575,28 +543,14 @@ def get_weekend_summary():
                         )
 
                     # Sort by BestLapTime
-                    valid_times = [
-                        d for d in pseudo_results if pd.notna(d["BestLapTime"])
-                    ]
-                    missing_times = [
-                        d for d in pseudo_results if pd.isna(d["BestLapTime"])
-                    ]
-                    valid_times.sort(key=lambda x: x["BestLapTime"])
-                    pseudo_results = valid_times + missing_times
+                    pseudo_results.sort(
+                        key=lambda d: (pd.isna(d["BestLapTime"]), d["BestLapTime"])
+                    )
 
                     # Format for downstream loop: (None, pd.Series)
                     drivers_to_process = [(None, pd.Series(d)) for d in pseudo_results]
 
-                fastest_lap_driver_abbr = None
-                if laps is not None and not laps.empty:
-                    try:
-                        fastest_lap = laps.pick_fastest()
-                        if fastest_lap is not None and pd.notna(
-                            fastest_lap.get("Driver")
-                        ):
-                            fastest_lap_driver_abbr = str(fastest_lap["Driver"])
-                    except Exception:
-                        pass
+                fastest_lap_driver_abbr = get_fastest_lap_driver(laps)
 
                 for idx, (_, driver) in enumerate(drivers_to_process):
                     entry_pos = idx + 1
@@ -629,13 +583,7 @@ def get_weekend_summary():
                         )
                     elif is_quali:
                         # Fallback for best_time: Q3 -> Q2 -> Q1 -> BestLapTime
-                        q_best = driver.get("Q3")
-                        if pd.isna(q_best):
-                            q_best = driver.get("Q2")
-                        if pd.isna(q_best):
-                            q_best = driver.get("Q1")
-                        if pd.isna(q_best):
-                            q_best = driver.get("BestLapTime")
+                        q_best = _first_valid_time(driver)
 
                         entry.update(
                             {
@@ -656,18 +604,8 @@ def get_weekend_summary():
                         if pd.isna(race_best):
                             race_best = driver.get("totalRaceTime")
 
-                        grid_val = driver.get("GridPosition")
-                        if pd.isna(grid_val):
-                            grid_val = driver.get("grid")
-                        grid_pos = (
-                            int(grid_val)
-                            if pd.notna(grid_val) and int(grid_val) > 0
-                            else None
-                        )
-                        positions_gained = (
-                            (grid_pos - entry_pos)
-                            if (grid_pos is not None and grid_pos > 0)
-                            else None
+                        grid_pos, positions_gained = parse_grid_and_delta(
+                            driver, entry_pos
                         )
 
                         driver_num_str = str(driver.get("DriverNumber", "??"))
@@ -696,23 +634,11 @@ def get_weekend_summary():
                             penalties=penalties,
                         )
 
-                        raw_time = driver.get("Time")
-                        finish_time = None
-                        if status_info["status_category"] == "finished" and pd.notna(
-                            raw_time
-                        ):
-                            if hasattr(raw_time, "total_seconds"):
-                                if entry_pos == 1:
-                                    finish_time = format_timedelta(raw_time)
-                                else:
-                                    if raw_time.total_seconds() < 180:
-                                        finish_time = (
-                                            f"+{raw_time.total_seconds():.3f}s"
-                                        )
-                                    else:
-                                        finish_time = format_timedelta(raw_time)
-                            else:
-                                finish_time = str(raw_time)
+                        finish_time = format_finish_time(
+                            driver.get("Time"),
+                            entry_pos,
+                            status_info["status_category"],
+                        )
 
                         has_fl = bool(
                             fastest_lap_driver_abbr and abbr == fastest_lap_driver_abbr

@@ -1,23 +1,20 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { getSeasonStats, getDriverCareer } from "../api";
+import { ref, computed, onMounted, onUnmounted } from "vue";
+import { useSeasonStats, getDriverCareer } from "../api";
 import F1Icon from "../components/F1Icon.vue";
 
 const props = defineProps({
-  year: {
-    type: Number,
-    required: true,
-  },
-  theme: {
-    type: String,
-    default: "light",
-  },
+  year: { type: Number, required: true },
+  theme: String,
 });
 
 // --- State ---
-const loading = ref(true);
-const error = ref(null);
-const seasonData = ref(null);
+const {
+  data: seasonData,
+  loading,
+  error,
+  refresh: fetchSeasonStats,
+} = useSeasonStats(() => props.year);
 
 const activeSection = ref("grid"); // 'grid' | 'h2h'
 const searchQuery = ref("");
@@ -27,37 +24,6 @@ const selectedDriver = ref(null);
 const careerLoading = ref(false);
 const careerData = ref(null);
 const careerError = ref(null);
-let statsReqId = 0;
-
-// --- Data Fetching ---
-async function fetchSeasonStats(year) {
-  const reqId = ++statsReqId;
-  loading.value = true;
-  error.value = null;
-  try {
-    const data = await getSeasonStats(year);
-    if (reqId !== statsReqId) return;
-    if (!data) {
-      throw new Error(`No data returned for ${year}`);
-    }
-    seasonData.value = data;
-  } catch (err) {
-    if (reqId !== statsReqId) return;
-    error.value = err.message || "Failed to load season statistics.";
-  } finally {
-    if (reqId === statsReqId) {
-      loading.value = false;
-    }
-  }
-}
-
-watch(
-  () => props.year,
-  (newYear) => {
-    fetchSeasonStats(newYear);
-  },
-  { immediate: true },
-);
 
 // --- Modal Handlers ---
 async function openDriverModal(driver) {
@@ -152,6 +118,54 @@ function getDeltaClass(delta) {
   if (delta < 0) return "delta-neg";
   return "delta-neutral";
 }
+
+function getBattleMetrics(battle) {
+  const pct = (val, total) => (total > 0 ? `${(val / total) * 100}%` : "50%");
+  return [
+    {
+      title: "Qualifying Battle",
+      s1: battle.quali_h2h.d1,
+      s2: battle.quali_h2h.d2,
+      w1: pct(battle.quali_h2h.d1, battle.quali_h2h.total),
+      w2: pct(battle.quali_h2h.d2, battle.quali_h2h.total),
+    },
+    {
+      title: "Grand Prix Battle",
+      s1: battle.race_h2h.d1,
+      s2: battle.race_h2h.d2,
+      w1: pct(battle.race_h2h.d1, battle.race_h2h.total),
+      w2: pct(battle.race_h2h.d2, battle.race_h2h.total),
+    },
+    {
+      title: "Points Contribution",
+      s1: `${battle.driver1.points_pct}%`,
+      s2: `${battle.driver2.points_pct}%`,
+      w1: `${battle.driver1.points_pct}%`,
+      w2: `${battle.driver2.points_pct}%`,
+    },
+  ];
+}
+
+const careerHonours = computed(() => {
+  const c = careerData.value;
+  if (!c) return [];
+  return [
+    { label: "Career Starts", val: c.career_starts, sub: "Grand Prix Starts" },
+    { label: "Career Wins", val: c.career_wins, sub: "Victories", gold: true },
+    { label: "Career Podiums", val: c.career_podiums, sub: "Top 3 Finishes" },
+    { label: "Career Poles", val: c.career_poles, sub: "Qualifying P1s" },
+    {
+      label: "Fastest Laps",
+      val: c.career_fastest_laps,
+      sub: "Race Lap Records",
+    },
+    {
+      label: "Active Span",
+      val: c.first_season ? `${c.first_season}–${c.latest_season}` : "—",
+      sub: `${c.seasons_count} Seasons Active`,
+    },
+  ];
+});
 </script>
 
 <template>
@@ -261,7 +275,6 @@ function getDeltaClass(delta) {
             v-for="driver in filteredDrivers"
             :key="driver.driver_id"
             class="driver-card"
-            :class="`pos-tier-${driver.position <= 3 ? driver.position : 'other'}`"
             @click="openDriverModal(driver)"
             tabindex="0"
             role="button"
@@ -579,98 +592,27 @@ function getDeltaClass(delta) {
 
               <!-- Comparison Rows -->
               <div class="h2h-comparisons">
-                <!-- 1. Qualifying H2H -->
-                <div class="comp-row">
+                <div
+                  v-for="row in getBattleMetrics(battle)"
+                  :key="row.title"
+                  class="comp-row"
+                >
                   <div class="comp-labels">
-                    <span class="comp-score mono">{{
-                      battle.quali_h2h.d1
-                    }}</span>
-                    <span class="comp-title">Qualifying Battle</span>
-                    <span class="comp-score mono">{{
-                      battle.quali_h2h.d2
-                    }}</span>
+                    <span class="comp-score mono">{{ row.s1 }}</span>
+                    <span class="comp-title">{{ row.title }}</span>
+                    <span class="comp-score mono">{{ row.s2 }}</span>
                   </div>
                   <div class="comp-bar-track">
                     <div
                       class="comp-bar-fill fill-d1"
                       :style="{
-                        width:
-                          battle.quali_h2h.total > 0
-                            ? `${(battle.quali_h2h.d1 / battle.quali_h2h.total) * 100}%`
-                            : '50%',
+                        width: row.w1,
                         backgroundColor: `#${battle.team_color}`,
                       }"
                     ></div>
                     <div
                       class="comp-bar-fill fill-d2"
-                      :style="{
-                        width:
-                          battle.quali_h2h.total > 0
-                            ? `${(battle.quali_h2h.d2 / battle.quali_h2h.total) * 100}%`
-                            : '50%',
-                      }"
-                    ></div>
-                  </div>
-                </div>
-
-                <!-- 2. Race H2H -->
-                <div class="comp-row">
-                  <div class="comp-labels">
-                    <span class="comp-score mono">{{
-                      battle.race_h2h.d1
-                    }}</span>
-                    <span class="comp-title">Grand Prix Battle</span>
-                    <span class="comp-score mono">{{
-                      battle.race_h2h.d2
-                    }}</span>
-                  </div>
-                  <div class="comp-bar-track">
-                    <div
-                      class="comp-bar-fill fill-d1"
-                      :style="{
-                        width:
-                          battle.race_h2h.total > 0
-                            ? `${(battle.race_h2h.d1 / battle.race_h2h.total) * 100}%`
-                            : '50%',
-                        backgroundColor: `#${battle.team_color}`,
-                      }"
-                    ></div>
-                    <div
-                      class="comp-bar-fill fill-d2"
-                      :style="{
-                        width:
-                          battle.race_h2h.total > 0
-                            ? `${(battle.race_h2h.d2 / battle.race_h2h.total) * 100}%`
-                            : '50%',
-                      }"
-                    ></div>
-                  </div>
-                </div>
-
-                <!-- 3. Points Contribution Split -->
-                <div class="comp-row">
-                  <div class="comp-labels">
-                    <span class="comp-score mono"
-                      >{{ battle.driver1.points_pct }}%</span
-                    >
-                    <span class="comp-title">Points Contribution</span>
-                    <span class="comp-score mono"
-                      >{{ battle.driver2.points_pct }}%</span
-                    >
-                  </div>
-                  <div class="comp-bar-track">
-                    <div
-                      class="comp-bar-fill fill-d1"
-                      :style="{
-                        width: `${battle.driver1.points_pct}%`,
-                        backgroundColor: `#${battle.team_color}`,
-                      }"
-                    ></div>
-                    <div
-                      class="comp-bar-fill fill-d2"
-                      :style="{
-                        width: `${battle.driver2.points_pct}%`,
-                      }"
+                      :style="{ width: row.w2 }"
                     ></div>
                   </div>
                 </div>
@@ -810,54 +752,15 @@ function getDeltaClass(delta) {
 
               <!-- Career Loaded Data -->
               <div v-else-if="careerData" class="career-honours-grid">
-                <div class="honour-box">
-                  <span class="honour-label">Career Starts</span>
-                  <span class="honour-val mono">{{
-                    careerData.career_starts
-                  }}</span>
-                  <span class="honour-sub">Grand Prix Starts</span>
-                </div>
-                <div class="honour-box highlight-gold">
-                  <span class="honour-label">Career Wins</span>
-                  <span class="honour-val mono">{{
-                    careerData.career_wins
-                  }}</span>
-                  <span class="honour-sub">Victories</span>
-                </div>
-                <div class="honour-box">
-                  <span class="honour-label">Career Podiums</span>
-                  <span class="honour-val mono">{{
-                    careerData.career_podiums
-                  }}</span>
-                  <span class="honour-sub">Top 3 Finishes</span>
-                </div>
-                <div class="honour-box">
-                  <span class="honour-label">Career Poles</span>
-                  <span class="honour-val mono">{{
-                    careerData.career_poles
-                  }}</span>
-                  <span class="honour-sub">Qualifying P1s</span>
-                </div>
-                <div class="honour-box">
-                  <span class="honour-label">Fastest Laps</span>
-                  <span class="honour-val mono">{{
-                    careerData.career_fastest_laps
-                  }}</span>
-                  <span class="honour-sub">Race Lap Records</span>
-                </div>
-                <div class="honour-box">
-                  <span class="honour-label">Active Span</span>
-                  <span class="honour-val mono">
-                    <template v-if="careerData.first_season">
-                      {{ careerData.first_season }}–{{
-                        careerData.latest_season
-                      }}
-                    </template>
-                    <template v-else>—</template>
-                  </span>
-                  <span class="honour-sub"
-                    >{{ careerData.seasons_count }} Seasons Active</span
-                  >
+                <div
+                  v-for="item in careerHonours"
+                  :key="item.label"
+                  class="honour-box"
+                  :class="{ 'highlight-gold': item.gold }"
+                >
+                  <span class="honour-label">{{ item.label }}</span>
+                  <span class="honour-val mono">{{ item.val }}</span>
+                  <span class="honour-sub">{{ item.sub }}</span>
                 </div>
               </div>
             </section>
@@ -889,7 +792,6 @@ function getDeltaClass(delta) {
                     <tr
                       v-for="entry in selectedDriver.season_form"
                       :key="entry.round"
-                      :class="`row-cat-${entry.category}`"
                     >
                       <td class="col-round mono">R{{ entry.round }}</td>
                       <td class="col-gp font-bold">{{ entry.round_name }}</td>
@@ -966,68 +868,15 @@ function getDeltaClass(delta) {
   box-sizing: border-box;
 }
 
-.mono {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ==========================================================================
    PAGE HEADER & CONTROLS
    ========================================================================== */
-.page-header {
-  margin-bottom: 2rem;
-  background: var(--card-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.25rem 1.75rem;
-  box-shadow: 0 4px 16px var(--shadow-color);
-}
-
 .header-main {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 1.25rem;
-}
-
-.header-title-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.header-icon-wrap {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--accent-color);
-  color: var(--primary-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--text-color);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 0.88rem;
-  color: var(--muted-text-color);
-  margin: 0.25rem 0 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
 }
 
 /* Sub-Navigation Toggle */
@@ -1083,27 +932,8 @@ function getDeltaClass(delta) {
 }
 
 /* Search Box */
-.search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
 .search-input {
-  background: var(--input-bg-color);
-  border: 1px solid var(--border-color);
-  color: var(--text-color);
-  padding: 0.55rem 2.2rem 0.55rem 0.85rem;
-  border-radius: 8px;
-  font-size: 0.88rem;
   width: 220px;
-  transition: all 0.2s;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--accent-color);
 }
 
 .clear-search {
@@ -1131,34 +961,6 @@ function getDeltaClass(delta) {
 /* ==========================================================================
    LOADING & ERROR STATES
    ========================================================================== */
-.state-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  text-align: center;
-  background: var(--card-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-bottom: 1rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .error-state {
   color: var(--primary-color);
 }
@@ -1167,17 +969,6 @@ function getDeltaClass(delta) {
   color: var(--text-color);
   margin: 1rem 0 1.5rem;
   font-size: 1rem;
-}
-
-.retry-btn {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-  padding: 0.6rem 1.4rem;
-  font-family: inherit;
-  font-weight: 700;
-  border-radius: 8px;
-  cursor: pointer;
 }
 
 .retry-btn:focus-visible {
@@ -1193,24 +984,6 @@ function getDeltaClass(delta) {
   background: var(--card-bg-color);
   border: 1px dashed var(--border-color);
   border-radius: 12px;
-}
-
-.reset-filter-btn {
-  margin-top: 1rem;
-  background: var(--item-bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  padding: 0.45rem 1rem;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-
-.reset-filter-btn:hover {
-  border-color: var(--primary-color);
 }
 
 .reset-filter-btn:focus-visible {
@@ -1301,24 +1074,6 @@ function getDeltaClass(delta) {
   color: var(--text-color);
   flex-shrink: 0;
   border: 1px solid var(--border-color);
-}
-
-.rank-badge.pos-1 {
-  background: linear-gradient(135deg, #ffd700 0%, #b89700 100%);
-  color: #000;
-  border: none;
-}
-
-.rank-badge.pos-2 {
-  background: linear-gradient(135deg, #e0e0e0 0%, #9e9e9e 100%);
-  color: #000;
-  border: none;
-}
-
-.rank-badge.pos-3 {
-  background: linear-gradient(135deg, #cd7f32 0%, #8c4c10 100%);
-  color: #fff;
-  border: none;
 }
 
 .driver-meta {
@@ -1490,47 +1245,11 @@ function getDeltaClass(delta) {
 }
 
 /* Metrics Grid (Core 4) */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.65rem;
-}
-
-.metric-box {
-  background: var(--item-bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 0.65rem 0.75rem;
-  min-height: 78px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.metric-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--muted-text-color);
-  line-height: 1.1;
-}
-
 .metric-val {
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--text-color);
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  white-space: nowrap;
   line-height: 1.2;
-}
-
-.metric-subtext {
-  font-size: 0.72rem;
-  color: var(--muted-text-color);
-  line-height: 1.1;
 }
 
 .h2h-divider {
@@ -1574,22 +1293,6 @@ function getDeltaClass(delta) {
 }
 
 /* Spotlight Stat */
-.spotlight-box {
-  background: linear-gradient(
-    145deg,
-    var(--item-bg-color) 0%,
-    rgba(225, 6, 0, 0.05) 100%
-  );
-  border-color: rgba(225, 6, 0, 0.25);
-}
-
-.spotlight-label {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  color: var(--primary-color);
-}
-
 .spotlight-tier-contender {
   border-color: rgba(255, 215, 0, 0.4);
   background: linear-gradient(
@@ -1680,12 +1383,14 @@ function getDeltaClass(delta) {
   transform: scale(1.15);
 }
 
-.form-win {
+.form-win,
+.badge-win {
   background: #ffd700;
   color: #000;
 }
 
-.form-podium {
+.form-podium,
+.badge-podium {
   background: #10b981;
   color: #fff;
 }
@@ -1706,12 +1411,14 @@ function getDeltaClass(delta) {
   border: 1px solid var(--border-color);
 }
 
-.form-dnf {
+.form-dnf,
+.badge-dnf {
   background: #ef4444;
   color: #fff;
 }
 
-.form-dns {
+.form-dns,
+.badge-dns {
   background: #64748b;
   color: #fff;
 }
@@ -2074,19 +1781,19 @@ function getDeltaClass(delta) {
   flex-shrink: 0;
 }
 
-.modal-pos.pos-1 {
+.pos-1 {
   background: linear-gradient(135deg, #ffd700 0%, #b89700 100%);
   color: #000;
   border: none;
 }
 
-.modal-pos.pos-2 {
+.pos-2 {
   background: linear-gradient(135deg, #e0e0e0 0%, #9e9e9e 100%);
   color: #000;
   border: none;
 }
 
-.modal-pos.pos-3 {
+.pos-3 {
   background: linear-gradient(135deg, #cd7f32 0%, #8c4c10 100%);
   color: #fff;
   border: none;
@@ -2349,16 +2056,6 @@ function getDeltaClass(delta) {
   font-weight: 800;
 }
 
-.badge-win {
-  background: #ffd700;
-  color: #000;
-}
-
-.badge-podium {
-  background: #10b981;
-  color: #fff;
-}
-
 .badge-points {
   background: rgba(16, 185, 129, 0.2);
   color: #047857;
@@ -2371,16 +2068,6 @@ function getDeltaClass(delta) {
 .badge-outside {
   background: var(--item-bg-color);
   color: var(--muted-text-color);
-}
-
-.badge-dnf {
-  background: #ef4444;
-  color: #fff;
-}
-
-.badge-dns {
-  background: #64748b;
-  color: #fff;
 }
 
 .delta-pill-sm {
@@ -2497,10 +2184,6 @@ function getDeltaClass(delta) {
   .career-honours-grid,
   .career-skeleton-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .race-log-grid {
-    grid-template-columns: 1fr;
   }
 }
 

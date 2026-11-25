@@ -103,8 +103,6 @@ const filteredResults = computed(() => {
   });
 });
 
-const formatLapTime = (timeStr) => formatLapTimeString(timeStr);
-
 const isEliminated = (index) => {
   const phase = selectedPhase.value || "";
   if (phase === "Q1" || phase === "SQ1") {
@@ -264,7 +262,7 @@ const getSectorColorForTheme = (status) => {
                       >
                         {{
                           lap.type === "push"
-                            ? formatLapTime(lap.lap_time)
+                            ? formatLapTimeString(lap.lap_time)
                             : lap.type.toUpperCase()
                         }}
                       </span>
@@ -287,40 +285,22 @@ const getSectorColorForTheme = (status) => {
                       "
                       class="sector-times"
                     >
-                      <div class="sector">
-                        <span class="s-label">S1</span>
+                      <div
+                        v-for="(secKey, idx) in ['s1', 's2', 's3']"
+                        :key="secKey"
+                        class="sector"
+                      >
+                        <span class="s-label">S{{ idx + 1 }}</span>
                         <span
                           class="s-val"
                           :style="{
                             color: getSectorColorForTheme(
-                              lap.sectors.s1.status,
+                              lap.sectors[secKey].status,
                             ),
                           }"
-                          >{{ lap.sectors.s1.time?.toFixed(3) || "--" }}</span
-                        >
-                      </div>
-                      <div class="sector">
-                        <span class="s-label">S2</span>
-                        <span
-                          class="s-val"
-                          :style="{
-                            color: getSectorColorForTheme(
-                              lap.sectors.s2.status,
-                            ),
-                          }"
-                          >{{ lap.sectors.s2.time?.toFixed(3) || "--" }}</span
-                        >
-                      </div>
-                      <div class="sector">
-                        <span class="s-label">S3</span>
-                        <span
-                          class="s-val"
-                          :style="{
-                            color: getSectorColorForTheme(
-                              lap.sectors.s3.status,
-                            ),
-                          }"
-                          >{{ lap.sectors.s3.time?.toFixed(3) || "--" }}</span
+                          >{{
+                            lap.sectors[secKey].time?.toFixed(3) || "--"
+                          }}</span
                         >
                       </div>
                     </div>
@@ -393,18 +373,6 @@ const getSectorColorForTheme = (status) => {
 .summary-scroll-area {
   overflow-x: auto;
   width: 100%;
-}
-
-.historical-note {
-  padding: 1rem 1.5rem;
-  background: var(--accent-color);
-  color: var(--primary-color);
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.historical-note p {
-  margin: 0;
 }
 
 .summary-table {
@@ -632,10 +600,6 @@ const getSectorColorForTheme = (status) => {
   color: var(--muted-text-color);
   font-weight: 500;
   width: 20px; /* Small fixed width just for the label to keep values aligned */
-}
-
-.s-val {
-  /* Dynamic color from inline style */
 }
 
 .lap-pill.out,

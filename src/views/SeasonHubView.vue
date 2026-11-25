@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from "vue";
 import { RouterLink } from "vue-router";
 import Chart from "chart.js/auto";
-import { getSeasonStats } from "../api";
+import { useSeasonStats } from "../api";
 import {
   formatOffsetLabel,
   formatSessionDateTime,
@@ -25,43 +25,15 @@ const props = defineProps({
 });
 
 // --- State ---
-const seasonStats = ref(null);
-const loadingStats = ref(true);
 const chartMode = ref("drivers"); // 'drivers' | 'constructors'
 const chartCanvas = ref(null);
 const chartDatasetsMeta = ref([]);
 let chartInstance = null;
-let statsReqId = 0;
 
 // --- Data Fetching ---
-async function fetchStats(year) {
-  const reqId = ++statsReqId;
-  loadingStats.value = true;
-  try {
-    const data = await getSeasonStats(year);
-    if (reqId !== statsReqId) return;
-    seasonStats.value = data;
-  } catch (err) {
-    if (reqId !== statsReqId) return;
-    console.error("Failed to load season stats:", err);
-    seasonStats.value = null;
-  } finally {
-    if (reqId === statsReqId) {
-      loadingStats.value = false;
-      nextTick(() => {
-        renderProgressionChart();
-      });
-    }
-  }
-}
-
-watch(
-  () => props.year,
-  (newYear) => {
-    fetchStats(newYear);
-  },
-  { immediate: true },
-);
+const { data: seasonStats } = useSeasonStats(() => props.year, {
+  onLoaded: () => nextTick(renderProgressionChart),
+});
 
 // --- Computeds ---
 const canShowConstructors = computed(() => {
@@ -114,54 +86,46 @@ function renderProgressionChart() {
 
   const labels = progression.rounds.map((r) => r.short_name || `R${r.round}`);
 
+  const makeDataset = (label, data, rawColor, dashed = false) => {
+    const color = `#${(rawColor || "e10600").toLowerCase().replace("#", "")}`;
+    return {
+      label,
+      data: data || [],
+      borderColor: color,
+      backgroundColor: color,
+      ...(dashed ? { borderDash: [5, 4] } : {}),
+      borderWidth: 2.5,
+      tension: 0.25,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+    };
+  };
+
   let datasets = [];
   if (chartMode.value === "drivers") {
-    const drivers = progression.drivers || [];
     const colorSeenCounts = new Map();
-
-    datasets = drivers.map((d) => {
+    datasets = (progression.drivers || []).map((d) => {
       const rawHex = (d.team_color || "e10600").toLowerCase().replace("#", "");
       const count = colorSeenCounts.get(rawHex) || 0;
       colorSeenCounts.set(rawHex, count + 1);
-
-      const isSecondTeammate = count > 0;
-      const color = `#${rawHex}`;
-
-      return {
-        label: `${d.driver_code} (${d.driver_name})`,
-        data: d.cumulative_points || [],
-        borderColor: color,
-        backgroundColor: color,
-        borderDash: isSecondTeammate ? [5, 4] : [],
-        borderWidth: 2.5,
-        tension: 0.25,
-        pointRadius: 3,
-        pointHoverRadius: 6,
-      };
+      return makeDataset(
+        `${d.driver_code} (${d.driver_name})`,
+        d.cumulative_points,
+        rawHex,
+        count > 0,
+      );
     });
   } else {
-    const constructors = progression.constructors || [];
-    datasets = constructors.map((c) => {
-      const rawHex = (c.team_color || "e10600").toLowerCase().replace("#", "");
-      const color = `#${rawHex}`;
-      return {
-        label: c.constructor_name,
-        data: c.cumulative_points || [],
-        borderColor: color,
-        backgroundColor: color,
-        borderWidth: 2.5,
-        tension: 0.25,
-        pointRadius: 3,
-        pointHoverRadius: 6,
-      };
-    });
+    datasets = (progression.constructors || []).map((c) =>
+      makeDataset(c.constructor_name, c.cumulative_points, c.team_color),
+    );
   }
 
   chartDatasetsMeta.value = datasets.map((ds, idx) => ({
     index: idx,
     label: ds.label,
     color: ds.borderColor,
-    isDashed: ds.borderDash && ds.borderDash.length > 0,
+    isDashed: Boolean(ds.borderDash?.length),
     visible: true,
   }));
 
@@ -251,13 +215,6 @@ function renderProgressionChart() {
   });
 }
 
-function setChartMode(mode) {
-  chartMode.value = mode;
-  nextTick(() => {
-    renderProgressionChart();
-  });
-}
-
 function toggleDataset(index) {
   if (!chartInstance) return;
   const isVisible = chartInstance.isDatasetVisible(index);
@@ -307,27 +264,26 @@ const nextRoundTrackTzLabel = computed(
   () => formatOffsetLabel(seasonStats.value?.next_round?.gmt_offset) || "Track",
 );
 
-function formatNextSessionTime(sessionItem) {
-  return formatSessionDateTime(sessionItem?.utc || sessionItem?.local, {
-    mode: effectiveNextTzMode.value,
-    gmtOffset: seasonStats.value?.next_round?.gmt_offset,
-  });
-}
+const nextRoundSessions = computed(() =>
+  (seasonStats.value?.next_round?.sessions || []).map((sess) => {
+    const dt = formatSessionDateTime(sess?.utc || sess?.local, {
+      mode: effectiveNextTzMode.value,
+      gmtOffset: seasonStats.value?.next_round?.gmt_offset,
+    });
+    return { ...sess, label: `${dt.day} · ${dt.time}` };
+  }),
+);
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    });
-  } catch {
-    return dateStr;
-  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 </script>
 
@@ -530,7 +486,7 @@ function formatDate(dateStr) {
 
             <div class="weekend-sessions-list">
               <div
-                v-for="sess in seasonStats.next_round.sessions"
+                v-for="sess in nextRoundSessions"
                 :key="sess.name"
                 class="weekend-session-row"
                 :class="{
@@ -541,10 +497,7 @@ function formatDate(dateStr) {
                 }"
               >
                 <span class="sess-name">{{ sess.name }}</span>
-                <span class="sess-datetime mono">
-                  {{ formatNextSessionTime(sess).day }} ·
-                  {{ formatNextSessionTime(sess).time }}
-                </span>
+                <span class="sess-datetime mono">{{ sess.label }}</span>
               </div>
             </div>
           </div>
@@ -578,7 +531,7 @@ function formatDate(dateStr) {
               :class="{ active: chartMode === 'drivers' }"
               role="tab"
               :aria-selected="chartMode === 'drivers'"
-              @click="setChartMode('drivers')"
+              @click="chartMode = 'drivers'"
             >
               <F1Icon name="helmet" :size="15" />
               <span>Drivers (Top 10)</span>
@@ -589,7 +542,7 @@ function formatDate(dateStr) {
               :class="{ active: chartMode === 'constructors' }"
               role="tab"
               :aria-selected="chartMode === 'constructors'"
-              @click="setChartMode('constructors')"
+              @click="chartMode = 'constructors'"
             >
               <F1Icon name="wrench" :size="15" />
               <span>Constructors</span>
@@ -698,11 +651,6 @@ function formatDate(dateStr) {
   background: rgba(225, 6, 0, 0.08);
   color: var(--primary-color);
   border-color: rgba(225, 6, 0, 0.25);
-}
-
-.mono {
-  font-family: "JetBrains Mono", monospace;
-  font-variant-numeric: tabular-nums;
 }
 
 .event-date {
@@ -990,42 +938,9 @@ function formatDate(dateStr) {
   color: var(--muted-text-color);
 }
 
-.tz-toggle {
-  display: inline-flex;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--card-bg-color);
-  padding: 2px;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.tz-btn {
-  border: none;
-  background: transparent;
-  color: var(--muted-text-color);
-  font-family: inherit;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.tz-btn:hover {
-  color: var(--text-color);
-}
-
 .tz-btn:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 1px;
-}
-
-.tz-btn.active {
-  background: var(--accent-color);
-  color: var(--primary-color);
 }
 
 .weekend-sessions-list {
@@ -1243,15 +1158,6 @@ function formatDate(dateStr) {
   .season-pulse-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
-  }
-
-  .podium-strip {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
-  }
-
-  .podium-box {
-    min-height: 52px;
   }
 
   .next-round-info-box {

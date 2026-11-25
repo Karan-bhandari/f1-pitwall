@@ -74,7 +74,7 @@
     </template>
 
     <!-- Driver Racing Helmet (WDC / Drivers) -->
-    <template v-else-if="name === 'helmet' || name === 'car'">
+    <template v-else-if="name === 'helmet'">
       <path d="M4 15v-2a8 8 0 0 1 15.5-2.8L21 14l-1.5 4H7a3 3 0 0 1-3-3z" />
       <path
         d="M13 10.5h6.5l1 2.8H13a1.4 1.4 0 0 1 0-2.8z"

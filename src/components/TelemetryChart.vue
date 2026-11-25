@@ -288,140 +288,74 @@ const renderCharts = (data) => {
     c2 = adjustColor(c1, 40);
   }
 
-  const createDataset = (driverData, label, color, key, isDrs = false) => ({
-    label: `${driverData.abbreviation} (Lap ${driverData.lap_number})`,
-    data: driverData.telemetry.map((t) => ({
-      x: t.distance,
-      y: isDrs
-        ? t.drs
-          ? 1
-          : 0
-        : key === "speed"
-          ? convertSpeedKmh(t[key], unitSystem.value)
-          : t[key],
-    })),
-    borderColor: color,
-    backgroundColor: color,
-    borderWidth: 1.5,
-    fill: false,
-    tension: 0,
-    stepped: isDrs ? "before" : false,
-  });
+  const buildDatasets = (key, isDrs = false) =>
+    [d1, d2].filter(Boolean).map((d, idx) => ({
+      label: `${d.abbreviation} (Lap ${d.lap_number})`,
+      data: d.telemetry.map((t) => ({
+        x: t.distance,
+        y: isDrs
+          ? t.drs
+            ? 1
+            : 0
+          : key === "speed"
+            ? convertSpeedKmh(t[key], unitSystem.value)
+            : t[key],
+      })),
+      borderColor: idx === 0 ? c1 : c2,
+      backgroundColor: idx === 0 ? c1 : c2,
+      borderWidth: 1.5,
+      fill: false,
+      tension: 0,
+      stepped: isDrs ? "before" : false,
+    }));
 
-  const buildDatasets = (label, key, isDrs = false) =>
-    d2
-      ? [
-          createDataset(d1, label, c1, key, isDrs),
-          createDataset(d2, label, c2, key, isDrs),
-        ]
-      : [createDataset(d1, label, c1, key, isDrs)];
-
-  // Speed
-  chartInstances.push(
-    createChart(
+  const channels = [
+    [
       "speed-chart",
       "Speed",
-      buildDatasets("Speed", "speed"),
+      "speed",
       getSpeedUnitLabel(unitSystem.value),
       null,
       null,
-      turns,
-    ),
-  );
-  // Throttle
-  chartInstances.push(
-    createChart(
-      "throttle-chart",
-      "Throttle",
-      buildDatasets("Throttle", "throttle"),
-      "%",
-      0,
-      100,
-      turns,
-    ),
-  );
-  // Brake
-  chartInstances.push(
-    createChart(
-      "brake-chart",
-      "Brake",
-      buildDatasets("Brake", "brake"),
-      "On/Off",
-      0,
-      1,
-      turns,
-    ),
-  );
-  // Gear
-  chartInstances.push(
-    createChart(
-      "gear-chart",
-      "Gear",
-      buildDatasets("Gear", "n_gear"),
-      "Gear",
-      null,
-      null,
-      turns,
-    ),
-  );
-  // RPM
-  chartInstances.push(
-    createChart(
-      "rpm-chart",
-      "RPM",
-      buildDatasets("RPM", "rpm"),
-      "RPM",
-      null,
-      null,
-      turns,
-    ),
-  );
+      false,
+    ],
+    ["throttle-chart", "Throttle", "throttle", "%", 0, 100, false],
+    ["brake-chart", "Brake", "brake", "On/Off", 0, 1, false],
+    ["gear-chart", "Gear", "n_gear", "Gear", null, null, false],
+    ["rpm-chart", "RPM", "rpm", "RPM", null, null, false],
+    ...(hasDRS.value
+      ? [["drs-chart", "DRS", "drs", "On/Off", 0, 1, true]]
+      : []),
+  ];
 
-  // DRS (Conditional)
-  if (hasDRS.value) {
-    chartInstances.push(
-      createChart(
-        "drs-chart",
-        "DRS",
-        buildDatasets("DRS", "drs", true),
-        "On/Off",
-        0,
-        1,
-        turns,
-      ),
-    );
+  chartInstances = channels
+    .map(([id, title, key, unit, min, max, isDrs]) =>
+      createChart(id, title, buildDatasets(key, isDrs), unit, min, max, turns),
+    )
+    .filter(Boolean);
+};
+
+const destroyCharts = () => {
+  chartInstances.forEach((chart) => chart.destroy());
+  chartInstances = [];
+};
+
+const scheduleRender = (data = props.telemetryData) => {
+  if (data) {
+    setTimeout(() => renderCharts(data), 0);
+  } else {
+    destroyCharts();
   }
 };
 
-watch(
-  () => props.telemetryData,
-  (newData) => {
-    if (newData) {
-      setTimeout(() => renderCharts(newData), 0);
-    } else {
-      chartInstances.forEach((chart) => chart.destroy());
-      chartInstances = [];
-    }
-  },
-  { deep: true },
-);
-
+watch(() => props.telemetryData, scheduleRender, { deep: true });
 watch([() => props.theme, unitSystem], () => {
-  if (props.telemetryData) {
-    setTimeout(() => renderCharts(props.telemetryData), 0);
-  }
+  if (props.telemetryData) scheduleRender();
 });
-
 onMounted(() => {
-  if (props.telemetryData) {
-    setTimeout(() => renderCharts(props.telemetryData), 0);
-  }
+  if (props.telemetryData) scheduleRender();
 });
-
-onBeforeUnmount(() => {
-  chartInstances.forEach((chart) => chart.destroy());
-  chartInstances = [];
-});
+onBeforeUnmount(destroyCharts);
 </script>
 
 <template>

@@ -7,12 +7,11 @@ import time
 import urllib.parse
 
 import requests
-from fastf1.exceptions import F1AuthError
 from fastf1.internals.f1account import get_token, token_manager
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect as ws_connect
 
-from .utils import get_historical_team_color
+from .utils import get_historical_team_color, safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +54,24 @@ class LiveUpstreamError(Exception):
     """Raised when the Formula 1 SignalR upstream times out or returns invalid data."""
 
 
+def _dict(obj: dict, key: str) -> dict:
+    val = obj.get(key)
+    return val if isinstance(val, dict) else {}
+
+
+def _session_live_state(raw: dict) -> tuple[str, bool, bool]:
+    session_status = (
+        str(_dict(raw, "SessionStatus").get("Status") or "").strip()
+        or str(_dict(raw, "SessionInfo").get("SessionStatus") or "").strip()
+        or "Unknown"
+    )
+    extrapolating = bool(_dict(raw, "ExtrapolatedClock").get("Extrapolating", False))
+    is_live = session_status in ("Started", "Aborted") or (
+        extrapolating and session_status not in _FINALIZED_STATUSES
+    )
+    return session_status, extrapolating, is_live
+
+
 class SnapshotCache:
     """Thread-safe in-memory cache for coalescing burst live timing snapshot requests."""
 
@@ -70,23 +87,8 @@ class SnapshotCache:
         self._data: dict | None = None
 
     def _effective_ttl(self, raw: dict) -> float:
-        status = ""
-        session_status = raw.get("SessionStatus")
-        if isinstance(session_status, dict):
-            status = str(session_status.get("Status") or "").strip()
-        if not status:
-            session_info = raw.get("SessionInfo")
-            if isinstance(session_info, dict):
-                status = str(session_info.get("SessionStatus") or "").strip()
-        clock = raw.get("ExtrapolatedClock")
-        extrapolating = (
-            bool(clock.get("Extrapolating")) if isinstance(clock, dict) else False
-        )
-        if status in ("Started", "Aborted") or (
-            extrapolating and status not in _FINALIZED_STATUSES
-        ):
-            return self._live_ttl
-        return self._idle_ttl
+        _, _, is_live = _session_live_state(raw)
+        return self._live_ttl if is_live else self._idle_ttl
 
     def get(self) -> dict | None:
         with self._lock:
@@ -132,10 +134,6 @@ def _get_auth_token(force_renew: bool = False) -> str:
     """Obtain the F1TV subscription JWT without logging or exposing secrets."""
     try:
         tok = get_token(force_renew=force_renew)
-    except F1AuthError as exc:
-        raise LiveAuthError(
-            "Formula 1 account authentication failed or is not configured."
-        ) from exc
     except Exception as exc:
         raise LiveAuthError(
             "Formula 1 account authentication failed or is not configured."
@@ -321,22 +319,8 @@ def _extract_val(field) -> str:
     return str(field)
 
 
-def _to_float(val) -> float | None:
-    if val is None or val == "":
-        return None
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return None
-
-
-def _to_int(val) -> int | None:
-    if val is None or val == "":
-        return None
-    try:
-        return int(val)
-    except (TypeError, ValueError):
-        return None
+_to_float = lambda val: safe_float(val, None)
+_to_int = lambda val: safe_int(val, None)
 
 
 def _parse_lap_time_seconds(val: str) -> float | None:
@@ -486,39 +470,15 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
     """Normalize a raw F1 SignalR snapshot dict into F1 PitWall's live JSON contract."""
     raw = raw if isinstance(raw, dict) else {}
 
-    session_info = (
-        raw.get("SessionInfo") if isinstance(raw.get("SessionInfo"), dict) else {}
-    )
-    meeting = (
-        session_info.get("Meeting")
-        if isinstance(session_info.get("Meeting"), dict)
-        else {}
-    )
-    country = meeting.get("Country") if isinstance(meeting.get("Country"), dict) else {}
-    circuit = meeting.get("Circuit") if isinstance(meeting.get("Circuit"), dict) else {}
+    session_info = _dict(raw, "SessionInfo")
+    meeting = _dict(session_info, "Meeting")
+    country = _dict(meeting, "Country")
+    circuit = _dict(meeting, "Circuit")
 
-    session_status_obj = (
-        raw.get("SessionStatus") if isinstance(raw.get("SessionStatus"), dict) else {}
-    )
-    session_status = (
-        str(session_status_obj.get("Status") or "").strip()
-        or str(session_info.get("SessionStatus") or "").strip()
-        or "Unknown"
-    )
+    session_status, extrapolating, is_live = _session_live_state(raw)
+    clock_obj = _dict(raw, "ExtrapolatedClock")
 
-    clock_obj = (
-        raw.get("ExtrapolatedClock")
-        if isinstance(raw.get("ExtrapolatedClock"), dict)
-        else {}
-    )
-    extrapolating = bool(clock_obj.get("Extrapolating", False))
-    is_live = session_status in ("Started", "Aborted") or (
-        extrapolating and session_status not in _FINALIZED_STATUSES
-    )
-
-    timing_data = (
-        raw.get("TimingData") if isinstance(raw.get("TimingData"), dict) else {}
-    )
+    timing_data = _dict(raw, "TimingData")
     session_part = _to_int(timing_data.get("SessionPart"))
 
     lap_count_obj = raw.get("LapCount")
@@ -554,7 +514,7 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
         "lap_count": lap_count,
     }
 
-    ts_obj = raw.get("TrackStatus") if isinstance(raw.get("TrackStatus"), dict) else {}
+    ts_obj = _dict(raw, "TrackStatus")
     raw_ts = str(ts_obj.get("Status") or "1").strip()
     ts_code, ts_label = TRACK_STATUS_MAP.get(
         raw_ts, ("UNKNOWN", str(ts_obj.get("Message") or "Unknown"))
@@ -566,7 +526,7 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
         "message": str(ts_obj.get("Message") or ts_label),
     }
 
-    w_obj = raw.get("WeatherData") if isinstance(raw.get("WeatherData"), dict) else {}
+    w_obj = _dict(raw, "WeatherData")
     weather = {
         "air_temp": _to_float(w_obj.get("AirTemp")),
         "track_temp": _to_float(w_obj.get("TrackTemp")),
@@ -578,24 +538,10 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
         not in ("0", "", "false", "none"),
     }
 
-    driver_list = (
-        raw.get("DriverList") if isinstance(raw.get("DriverList"), dict) else {}
-    )
-    td_lines = (
-        timing_data.get("Lines") if isinstance(timing_data.get("Lines"), dict) else {}
-    )
-    timing_app = (
-        raw.get("TimingAppData") if isinstance(raw.get("TimingAppData"), dict) else {}
-    )
-    ta_lines = (
-        timing_app.get("Lines") if isinstance(timing_app.get("Lines"), dict) else {}
-    )
-    timing_stats = (
-        raw.get("TimingStats") if isinstance(raw.get("TimingStats"), dict) else {}
-    )
-    ts_lines = (
-        timing_stats.get("Lines") if isinstance(timing_stats.get("Lines"), dict) else {}
-    )
+    driver_list = _dict(raw, "DriverList")
+    td_lines = _dict(timing_data, "Lines")
+    ta_lines = _dict(_dict(raw, "TimingAppData"), "Lines")
+    ts_lines = _dict(_dict(raw, "TimingStats"), "Lines")
 
     all_numbers = {
         str(k)
@@ -605,10 +551,10 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
 
     standings = []
     for num in all_numbers:
-        dl = driver_list.get(num) if isinstance(driver_list.get(num), dict) else {}
-        td = td_lines.get(num) if isinstance(td_lines.get(num), dict) else {}
-        ta = ta_lines.get(num) if isinstance(ta_lines.get(num), dict) else {}
-        tstat = ts_lines.get(num) if isinstance(ts_lines.get(num), dict) else {}
+        dl = _dict(driver_list, num)
+        td = _dict(td_lines, num)
+        ta = _dict(ta_lines, num)
+        tstat = _dict(ts_lines, num)
 
         position = (
             _to_int(td.get("Position"))
@@ -648,7 +594,7 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
             for idx, item in enumerate(_as_indexed_list(td.get("BestLapTimes")))
         ]
 
-        speeds_obj = td.get("Speeds") if isinstance(td.get("Speeds"), dict) else {}
+        speeds_obj = _dict(td, "Speeds")
         speeds = {
             "i1": _extract_val(speeds_obj.get("I1")),
             "i2": _extract_val(speeds_obj.get("I2")),
@@ -761,11 +707,7 @@ def normalize_snapshot(raw: dict, fetched_at: str | None = None) -> dict:
             ):
                 row["did_not_start"] = True
 
-    rcm_obj = (
-        raw.get("RaceControlMessages")
-        if isinstance(raw.get("RaceControlMessages"), dict)
-        else {}
-    )
+    rcm_obj = _dict(raw, "RaceControlMessages")
     rc_raw = _as_indexed_list(rcm_obj.get("Messages"))
     race_control = [
         {
